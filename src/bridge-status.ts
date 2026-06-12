@@ -10,6 +10,7 @@ import {
   getSolanaBridgeState,
   incomingMessageAccountSpace,
   parseBaseToSolanaTransfer,
+  readIncomingMessageExecuted,
   readMintInfo,
   type ParsedTransfer
 } from "./solana";
@@ -160,6 +161,14 @@ async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
   } as const;
 
   if (incomingInfo) {
+    if (readIncomingMessageExecuted(incomingInfo.data, event.message.data)) {
+      return {
+        ...common,
+        status: "claimed",
+        humanStatus: "Claim confirmed on Solana. The incoming bridge message has already executed."
+      };
+    }
+
     return {
       ...common,
       status: "proof_created",

@@ -221,6 +221,12 @@ export function incomingMessageAccountSpace(data: Hex): number {
   return 8 + 20 + 4 + hexToBytes(data).length + 1;
 }
 
+export function readIncomingMessageExecuted(accountData: Buffer | Uint8Array, messageData: Hex): boolean {
+  const executedOffset = 8 + 20 + hexToBytes(messageData).length;
+  if (accountData.length <= executedOffset) throw new Error("The Solana incoming message account has an unexpected layout.");
+  return accountData[executedOffset] === 1;
+}
+
 function assertRecipientWallet(payer: PublicKey, transfer: ParsedTransfer, tokenProgram: PublicKey): void {
   const expectedAta = deriveAta(payer, transfer.localMint, tokenProgram);
   if (!expectedAta.equals(transfer.toTokenAccount)) {

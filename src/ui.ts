@@ -341,6 +341,8 @@ function getStatusTitle(status: BridgeStatus["status"]): string {
       return "Ready to claim";
     case "proof_created":
       return "Ready to relay";
+    case "claimed":
+      return "Claim confirmed";
   }
 }
 
@@ -356,6 +358,8 @@ function getStatusBadge(status: BridgeStatus["status"]): { label: string; tone: 
       return { label: "Ready", tone: "success" };
     case "proof_created":
       return { label: "Relay retry", tone: "info" };
+    case "claimed":
+      return { label: "Confirmed", tone: "success" };
   }
 }
 
@@ -379,6 +383,13 @@ function getProgressSteps(status: BridgeStatus["status"]): Array<{ label: string
       { label: "Burn on Base", text: "Complete", state: "done" },
       { label: "Wait for output root", text: "Complete", state: "done" },
       { label: "Claim on Solana", text: "Retry relay", state: "current" }
+    ];
+  }
+  if (status === "claimed") {
+    return [
+      { label: "Burn on Base", text: "Complete", state: "done" },
+      { label: "Wait for output root", text: "Complete", state: "done" },
+      { label: "Claim on Solana", text: "Confirmed", state: "done" }
     ];
   }
   if (status === "not_bridge_tx") {

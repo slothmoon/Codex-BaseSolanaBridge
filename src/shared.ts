@@ -51,7 +51,7 @@ export type ReturnDetails = {
 };
 
 export type BridgeStatus = {
-  status: "waiting_for_base_tx" | "not_bridge_tx" | "waiting_for_root" | "ready_to_claim" | "proof_created";
+  status: "waiting_for_base_tx" | "not_bridge_tx" | "waiting_for_root" | "ready_to_claim" | "proof_created" | "claimed";
   humanStatus: string;
   txHash: Hex;
   messageHash?: Hex;
