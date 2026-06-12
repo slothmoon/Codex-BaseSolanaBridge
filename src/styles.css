@@ -67,7 +67,7 @@ h2 { margin-bottom: 4px; font-size: 1.1rem; }
   gap: 18px;
 }
 
-.panel, .notes {
+.panel, .notes, .disclaimer {
   border: 1px solid #d4ded6;
   border-radius: 10px;
   background: #fff;
@@ -454,6 +454,16 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .notes { margin-top: 18px; }
 .notes ol { margin: 0; padding-left: 22px; }
+.disclaimer {
+  margin-top: 18px;
+  border-color: #e2d5aa;
+  background: #fffaf0;
+  color: #574318;
+  font-size: 0.94rem;
+}
+.disclaimer strong {
+  color: #392a0b;
+}
 .build-footer {
   padding: 18px 4px 0;
   color: #8a968e;

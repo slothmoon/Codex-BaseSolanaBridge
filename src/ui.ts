@@ -81,6 +81,11 @@ export function renderApp(): void {
         </ol>
       </section>
 
+      <section class="disclaimer">
+        <strong>Use at your own risk.</strong>
+        This interface is provided as-is, without warranties or guarantees. It is a non-custodial tool for interacting with the official bridge contracts and programs, but you are responsible for verifying the token, amount, destination wallet, and transaction results before moving meaningful funds.
+      </section>
+
       <footer class="build-footer">Build ${BUILD_ID}</footer>
     </main>
   `;
