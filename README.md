@@ -22,11 +22,12 @@ The page refuses to submit unless:
 - The wrapper authorizes the configured official Base bridge
 - The remote Solana mint exists
 - The mint is owned by Standard SPL Token or Token-2022
-- Token-2022 mints do not use return-unsafe extensions such as transfer fees, transfer hooks, default frozen accounts, non-transferable tokens, confidential transfer state, scaled UI amounts, or pausing
 - Base wrapper decimals match Solana mint decimals
 - The derived bridge vault exists and matches the mint and token program
 - The user's Base balance and bridge-vault balance cover the amount
 - `Bridge.bridgeToken(...)` succeeds in an `eth_call` simulation
+
+For Token-2022 mints, the page detects mint extensions and shows a warning to try a small amount first. Support can vary by extension and bridge-program behavior, so the UI does not claim every Token-2022 feature is fully supported.
 
 The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
 

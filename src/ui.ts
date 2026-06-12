@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "token2022-guard-v14";
+const BUILD_ID = "token2022-warning-v15";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -93,6 +93,7 @@ export function invalidateBurnValidation(): void {
 }
 
 export function renderDerived(details: ReturnDetails): void {
+  const token2022Warning = renderToken2022Warning(details);
   const rows: Array<[string, string, boolean?]> = [
     ["Factory verified", "Yes"],
     ["Factory", CONFIG.baseFactory, true],
@@ -120,6 +121,7 @@ export function renderDerived(details: ReturnDetails): void {
   }
 
   $("derivedBox").innerHTML = `
+    ${token2022Warning}
     <dl class="validation-summary">
       ${rows.map(([label, value, address]) => `
         <div class="validation-row">
@@ -128,6 +130,22 @@ export function renderDerived(details: ReturnDetails): void {
         </div>
       `).join("")}
     </dl>
+  `;
+}
+
+function renderToken2022Warning(details: ReturnDetails): string {
+  if (details.mintInfo.tokenProgramLabel !== "Token-2022") return "";
+
+  const extensions = details.mintInfo.token2022Extensions.length
+    ? details.mintInfo.token2022Extensions.map((extension) => extension.name).join(", ")
+    : "none detected";
+
+  return `
+    <div class="token-warning">
+      <strong>Token-2022 support can vary.</strong>
+      This page found Token-2022 mint data for this asset. Before returning your full balance, try a very small amount first and confirm the claim lands in your Solana wallet.
+      <span>Detected extensions: ${escapeHtml(extensions)}.</span>
+    </div>
   `;
 }
 

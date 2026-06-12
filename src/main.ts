@@ -31,7 +31,10 @@ async function init(): Promise<void> {
   $("connectBase").addEventListener("click", () => runSafely(connectBase));
   $("connectSolana").addEventListener("click", () => runSafely(connectSolana));
   $("deriveDetails").addEventListener("click", () => runSafely(previewReturn));
-  $("bridgeForm").addEventListener("submit", (event) => runSafely(() => startBridge(event)));
+  $("bridgeForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    void runSafely(startBridge);
+  });
   $("checkStatus").addEventListener("click", () => runSafely(checkStatus));
   $("claim").addEventListener("click", () => runSafely(claimOnSolana));
   document.addEventListener("click", (event) => {

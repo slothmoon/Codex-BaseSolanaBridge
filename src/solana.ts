@@ -24,7 +24,6 @@ const MINT_SIZE = 82;
 const TOKEN_ACCOUNT_SIZE = 165;
 const TOKEN_2022_MINT_ACCOUNT_TYPE = 1;
 const TLV_HEADER_SIZE = 4;
-const SAFE_TOKEN_2022_RETURN_EXTENSIONS = new Set([3, 18, 19, 20, 21, 22, 23]);
 
 export type BridgeState = {
   bridge: PublicKey;
@@ -131,23 +130,6 @@ export async function readMintInfo(connection: Connection, mint: PublicKey): Pro
     tokenProgramLabel,
     token2022Extensions
   };
-}
-
-export function assertMintSafeForBaseBurn(mintInfo: MintInfo): void {
-  if (!mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) return;
-
-  const unsafe = mintInfo.token2022Extensions.filter((extension) =>
-    !SAFE_TOKEN_2022_RETURN_EXTENSIONS.has(extension.type)
-  );
-  if (!unsafe.length) return;
-
-  throw new Error(
-    [
-      "This Token-2022 mint uses extension(s) that this page will not return through the bridge:",
-      unsafe.map((extension) => extension.name).join(", "),
-      "No Base burn was submitted. These extensions can add transfer fees, hooks, freezes, pauses, confidential state, or other behavior that could make the Solana claim fail or credit less than the burned amount."
-    ].join(" ")
-  );
 }
 
 export async function readVaultBalance(
