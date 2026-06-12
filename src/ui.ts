@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "wallet-rpc-v25";
+const BUILD_ID = "executed-offset-v26";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 

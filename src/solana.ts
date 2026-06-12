@@ -227,7 +227,10 @@ export function incomingMessageAccountSpace(data: Hex): number {
 }
 
 export function readIncomingMessageExecuted(accountData: Buffer | Uint8Array, messageData: Hex): boolean {
-  const executedOffset = 8 + 20 + 4 + hexToBytes(messageData).length;
+  // The program overallocates IncomingMessage by 4 bytes, but the `message`
+  // field itself is a Borsh enum, not a Vec. The executed flag is serialized
+  // immediately after the raw Message bytes.
+  const executedOffset = 8 + 20 + hexToBytes(messageData).length;
   if (accountData.length <= executedOffset) throw new Error("The Solana incoming message account has an unexpected layout.");
   return accountData[executedOffset] === 1;
 }
