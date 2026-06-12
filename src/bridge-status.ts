@@ -5,7 +5,6 @@ import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
-  estimateRecipientTokenAccountSpace,
   getIncomingMessagePda,
   getOutputRootPda,
   getSolanaBridgeState,
@@ -15,7 +14,7 @@ import {
   readMintInfo,
   type ParsedTransfer
 } from "./solana";
-import { getBaseClient, solana, state, STORAGE_KEY, type BridgeStatus, type SolanaProvider } from "./shared";
+import { getBaseClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
 import {
   errorMessage,
   formatSolanaError,
@@ -118,7 +117,6 @@ export async function claimOnSolana(): Promise<void> {
 
   setStatus("Simulation passed. Confirm the Solana claim in your wallet.");
   const signature = await sendSolanaTransaction(provider, transaction);
-  localStorage.setItem(`${STORAGE_KEY}:claim:${txHash}`, signature);
   setStatus(`Claim submitted on Solana:\n${signature}\n\nThe transaction has been broadcast. You can verify it in Solana Explorer.`);
 }
 
@@ -214,8 +212,7 @@ async function assertEnoughSol(
     required += BigInt(await solana.getMinimumBalanceForRentExemption(incomingMessageAccountSpace(status.messageData), "confirmed"));
   }
   if (!ataInfo) {
-    const mintInfo = await readMintInfo(solana, transfer.localMint);
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(estimateRecipientTokenAccountSpace(mintInfo), "confirmed"));
+    required += BigInt(await solana.getMinimumBalanceForRentExemption(165, "confirmed"));
   }
   required += CLAIM_SOL_BUFFER_LAMPORTS;
 

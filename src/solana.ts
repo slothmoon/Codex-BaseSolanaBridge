@@ -149,14 +149,6 @@ export async function readVaultBalance(
   return data.readBigUInt64LE(64);
 }
 
-export function estimateRecipientTokenAccountSpace(mintInfo: MintInfo): number {
-  if (mintInfo.tokenProgramLabel === "Standard SPL Token") return TOKEN_ACCOUNT_SIZE;
-
-  // Token-2022 account extensions can make ATAs larger than the classic 165
-  // bytes. Use a conservative estimate so low-SOL warnings are not understated.
-  return 1024;
-}
-
 export function parseBaseToSolanaTransfer(messageDataHex: Hex): ParsedTransfer {
   const bytes = Buffer.from(hexToBytes(messageDataHex));
   if (bytes.length < 94) throw new Error("The Base bridge message is shorter than expected.");

@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "token2022-warning-v15";
+const BUILD_ID = "simple-claim-v19";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -149,6 +149,7 @@ function renderToken2022Warning(details: ReturnDetails): string {
     <div class="token-warning">
       <strong>Token-2022 support can vary.</strong>
       This page found Token-2022 mint data for this asset. Before returning your full balance, try a very small amount first and confirm the claim lands in your Solana wallet.
+      If this token needs extra account rent, the Solana simulation will stop before signing and ask you to add more SOL.
       <span>Detected extensions: ${escapeHtml(extensions)}.</span>
     </div>
   `;
@@ -422,7 +423,7 @@ function getFriendlySolanaError(logs?: string[] | null, reason = ""): string {
   if (!match) return "Your Solana wallet needs more SOL to pay account rent and transaction fees. Add SOL, then retry.";
   const current = BigInt(match[1]);
   const needed = BigInt(match[2]);
-  return `Your Solana wallet has about ${lamportsToSol(current)} SOL available at the failing instruction, but needs at least ${lamportsToSol(needed)} SOL plus transaction fees. Add roughly 0.005 SOL, then retry the same Base transaction hash.`;
+  return `Your Solana wallet has about ${lamportsToSol(current)} SOL available at the failing instruction, but needs at least ${lamportsToSol(needed)} SOL plus transaction fees. Add a little more SOL, then retry the same Base transaction hash.`;
 }
 
 function formatLogs(logs?: string[] | null): string {
