@@ -240,9 +240,6 @@ export function rememberTx(txHash: Hex): void {
   state.currentTxHash = txHash;
   $<HTMLInputElement>("txHash").value = txHash;
   localStorage.setItem(STORAGE_KEY, txHash);
-  const url = new URL(location.href);
-  url.searchParams.set("tx", txHash);
-  history.replaceState(null, "", url);
 }
 
 export function errorMessage(error: unknown): string {

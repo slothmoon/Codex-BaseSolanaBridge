@@ -31,7 +31,7 @@ For Token-2022 mints, the page detects mint extensions and shows a warning to tr
 
 The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
 
-The Base transaction hash is saved to browser local storage and added to the URL as `?tx=0x...`. Users can also paste any prior burn transaction hash manually.
+The Base transaction hash is saved to browser local storage. Users can also paste any prior burn transaction hash manually.
 
 ## Local development
 
