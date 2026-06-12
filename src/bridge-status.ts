@@ -27,7 +27,7 @@ import {
 } from "./ui";
 import { connectSolana, getSolanaProvider } from "./wallets";
 
-const CLAIM_SOL_BUFFER_LAMPORTS = 5_000_000n;
+const CLAIM_SOL_BUFFER_LAMPORTS = 2_000_000n;
 
 export async function checkStatus(): Promise<void> {
   const txHash = readTxHash();
