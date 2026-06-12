@@ -3,7 +3,7 @@ import { getAddress } from "viem";
 
 import { CONFIG } from "./config";
 import { state, type SolanaProvider } from "./shared";
-import { $, invalidateBurnValidation, setStatus, short } from "./ui";
+import { $, invalidateBurnValidation, setStatus, short, syncBaseActionButtons } from "./ui";
 
 let activeSolanaProvider: SolanaProvider | null = null;
 const SOLANA_RESTORE_ATTEMPTS = 10;
@@ -22,6 +22,7 @@ export async function restoreBaseConnection(): Promise<void> {
   try {
     const accounts = (await window.ethereum.request({ method: "eth_accounts" })) as string[];
     if (accounts[0]) setBaseAccount(accounts[0]);
+    await syncBaseNetwork();
   } catch {
     // Silent restore is best effort. The user can still connect manually.
   }
@@ -35,8 +36,14 @@ export function watchBaseAccountChanges(): void {
     }
     if (state.evmAccount) invalidateBurnValidation();
     state.evmAccount = "";
+    state.baseReady = false;
     $("baseWallet").textContent = "Base wallet not connected.";
     $("connectBase").textContent = "Connect Base wallet";
+    syncBaseActionButtons();
+  });
+
+  window.ethereum?.on?.("chainChanged", () => {
+    void syncBaseNetwork();
   });
 }
 
@@ -106,6 +113,7 @@ export async function ensureBaseNetwork(): Promise<void> {
       }]
     });
   }
+  await syncBaseNetwork();
 }
 
 export function getSolanaProvider(): SolanaProvider | null {
@@ -118,8 +126,32 @@ function setBaseAccount(account: string): void {
   const nextAccount = getAddress(account);
   if (state.evmAccount !== nextAccount) invalidateBurnValidation();
   state.evmAccount = nextAccount;
-  $("baseWallet").textContent = `Base: ${short(nextAccount)}`;
   $("connectBase").textContent = "Base wallet connected";
+  void syncBaseNetwork();
+}
+
+async function syncBaseNetwork(): Promise<void> {
+  if (!window.ethereum || !state.evmAccount) {
+    state.baseReady = false;
+    syncBaseActionButtons();
+    return;
+  }
+
+  let chainId = "";
+  try {
+    chainId = String(await window.ethereum.request({ method: "eth_chainId" }));
+  } catch {
+    chainId = "";
+  }
+
+  const expectedChainId = `0x${CONFIG.baseChain.id.toString(16)}`;
+  const nextBaseReady = chainId.toLowerCase() === expectedChainId;
+  if (state.baseReady !== nextBaseReady) invalidateBurnValidation();
+  state.baseReady = nextBaseReady;
+  $("baseWallet").textContent = state.baseReady
+    ? `Base: ${short(state.evmAccount)}`
+    : `Base wallet connected. Switch to ${CONFIG.baseChain.name} to continue.`;
+  syncBaseActionButtons();
 }
 
 function getAvailableSolanaProviders(): SolanaProvider[] {

@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "status-wallet-v22";
+const BUILD_ID = "base-gate-v23";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -45,7 +45,7 @@ export function renderApp(): void {
           <div class="buttonRow">
             <button type="button" id="connectBase">Connect Base wallet</button>
             <button type="button" id="connectSolana">Connect Solana wallet</button>
-            <button type="button" id="deriveDetails">Validate and preview</button>
+            <button type="button" id="deriveDetails" disabled>Validate and preview</button>
             <button type="submit" class="primary" id="burnButton" disabled>Burn on Base</button>
           </div>
           <p class="hint" id="baseWallet">Base wallet not connected.</p>
@@ -64,7 +64,7 @@ export function renderApp(): void {
             <input id="txHash" placeholder="0x..." autocomplete="off" />
           </label>
           <div class="buttonRow">
-            <button type="button" id="checkStatus">Check status</button>
+            <button type="button" id="checkStatus" disabled>Check status</button>
             <button type="button" id="claim" class="primary" disabled>Claim on Solana</button>
           </div>
           <div id="statusBox" class="status">No transaction selected.</div>
@@ -95,6 +95,21 @@ export function invalidateBurnValidation(): void {
   state.validatedBurnKey = "";
   const burnButton = document.getElementById("burnButton") as HTMLButtonElement | null;
   if (burnButton) burnButton.disabled = true;
+}
+
+export function syncBaseActionButtons(): void {
+  const baseReady = Boolean(state.evmAccount && state.baseReady);
+  const claimReady = state.currentStatus?.status === "ready_to_claim" || state.currentStatus?.status === "proof_created";
+
+  const deriveButton = document.getElementById("deriveDetails") as HTMLButtonElement | null;
+  const burnButton = document.getElementById("burnButton") as HTMLButtonElement | null;
+  const checkButton = document.getElementById("checkStatus") as HTMLButtonElement | null;
+  const claimButton = document.getElementById("claim") as HTMLButtonElement | null;
+
+  if (deriveButton) deriveButton.disabled = !baseReady;
+  if (burnButton) burnButton.disabled = !baseReady || !state.validatedBurnKey;
+  if (checkButton) checkButton.disabled = !baseReady;
+  if (claimButton) claimButton.disabled = !baseReady || !claimReady;
 }
 
 export function renderDerived(details: ReturnDetails): void {
@@ -213,6 +228,7 @@ export function renderStatus(status: BridgeStatus): void {
       </div>
     </div>
   `;
+  syncBaseActionButtons();
 }
 
 export function setStatus(message: string, tone: "info" | "success" | "error" = "info"): void {

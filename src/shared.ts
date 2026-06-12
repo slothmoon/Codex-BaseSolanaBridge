@@ -15,6 +15,7 @@ import type { MintInfo, ParsedTransfer } from "./solana";
 export type EthereumProvider = {
   request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown>;
   on?(event: "accountsChanged", listener: (accounts: string[]) => void): void;
+  on?(event: "chainChanged", listener: (chainId: string) => void): void;
 };
 
 export type SolanaProvider = {
@@ -73,6 +74,7 @@ export const solana = new Connection(CONFIG.solanaRpcUrl, "confirmed");
 
 export const state = {
   evmAccount: "" as Address | "",
+  baseReady: false,
   solanaAccount: "",
   currentTxHash: "" as Hex | "",
   currentStatus: null as BridgeStatus | null,
@@ -93,15 +95,6 @@ export function getBaseReadClient() {
   });
 }
 
-export async function getBaseStatusClient() {
-  const transports: Transport[] = baseRpcTransports();
-  if (await isEthereumOnBase()) transports.unshift(custom(window.ethereum!));
-  return createPublicClient({
-    chain: CONFIG.baseChain,
-    transport: fallback(transports, { retryCount: 2, retryDelay: 750 })
-  });
-}
-
 export function getBaseClient() {
   const transports: Transport[] = baseRpcTransports();
   if (window.ethereum) transports.unshift(custom(window.ethereum));
@@ -109,14 +102,4 @@ export function getBaseClient() {
     chain: CONFIG.baseChain,
     transport: fallback(transports, { retryCount: 2, retryDelay: 750 })
   });
-}
-
-async function isEthereumOnBase(): Promise<boolean> {
-  if (!window.ethereum) return false;
-  try {
-    const chainId = await window.ethereum.request({ method: "eth_chainId" });
-    return chainId === `0x${CONFIG.baseChain.id.toString(16)}`;
-  } catch {
-    return false;
-  }
 }
