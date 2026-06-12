@@ -116,6 +116,11 @@ export async function ensureBaseNetwork(): Promise<void> {
   await syncBaseNetwork();
 }
 
+export function requireBaseReady(): void {
+  if (!state.evmAccount) throw new Error("Connect your Base wallet first.");
+  if (!state.baseReady) throw new Error(`Switch your Base wallet to ${CONFIG.baseChain.name} to continue.`);
+}
+
 export function getSolanaProvider(): SolanaProvider | null {
   if (activeSolanaProvider?.publicKey) return activeSolanaProvider;
   const providers = getAvailableSolanaProviders();
