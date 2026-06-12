@@ -27,6 +27,8 @@ import {
 } from "./ui";
 import { connectSolana, getSolanaProvider } from "./wallets";
 
+const CLAIM_SOL_BUFFER_LAMPORTS = 5_000_000n;
+
 export async function checkStatus(): Promise<void> {
   const txHash = readTxHash();
   setStatus("Reading the Base receipt and Solana bridge state...");
@@ -215,7 +217,7 @@ async function assertEnoughSol(
     const mintInfo = await readMintInfo(solana, transfer.localMint);
     required += BigInt(await solana.getMinimumBalanceForRentExemption(estimateRecipientTokenAccountSpace(mintInfo), "confirmed"));
   }
-  required += 20_000n;
+  required += CLAIM_SOL_BUFFER_LAMPORTS;
 
   if (BigInt(balance) < required) {
     throw new Error(

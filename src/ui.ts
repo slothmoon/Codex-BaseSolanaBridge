@@ -260,8 +260,8 @@ export function errorMessage(error: unknown): string {
 }
 
 export function formatSolanaFailure(prefix: string, reason: unknown, logs?: string[] | null): string {
-  const friendly = getFriendlySolanaError(logs);
   const reasonText = typeof reason === "string" ? reason : JSON.stringify(reason);
+  const friendly = getFriendlySolanaError(logs, reasonText);
   return `${friendly ? `${friendly}\n\n` : ""}${prefix}: ${reasonText}${formatLogs(logs)}`;
 }
 
@@ -278,7 +278,7 @@ export async function formatSolanaError(prefix: string, error: unknown, getLogsC
       // Keep the original wallet or RPC error if log retrieval also fails.
     }
   }
-  const friendly = getFriendlySolanaError(logs);
+  const friendly = getFriendlySolanaError(logs, errorMessage(error));
   return `${friendly ? `${friendly}\n\n` : ""}${prefix}: ${errorMessage(error)}${formatLogs(logs)}`;
 }
 
@@ -411,7 +411,11 @@ function getProgressSteps(status: BridgeStatus["status"]): Array<{ label: string
   ];
 }
 
-function getFriendlySolanaError(logs?: string[] | null): string {
+function getFriendlySolanaError(logs?: string[] | null, reason = ""): string {
+  if (/InsufficientFundsForRent/i.test(reason)) {
+    return "Your Solana wallet still needs more SOL for rent and fees. Add a little more SOL, then retry the same Base transaction hash. No extra Base burn is needed.";
+  }
+
   const insufficient = logs?.find((log) => log.includes("Transfer: insufficient lamports"));
   if (!insufficient) return "";
   const match = insufficient.match(/insufficient lamports (\d+), need (\d+)/);
