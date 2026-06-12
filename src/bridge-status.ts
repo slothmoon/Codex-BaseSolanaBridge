@@ -14,7 +14,7 @@ import {
   readMintInfo,
   type ParsedTransfer
 } from "./solana";
-import { getBaseReadClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
+import { getBaseStatusClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
 import {
   errorMessage,
   formatSolanaError,
@@ -37,7 +37,7 @@ export async function checkStatus(): Promise<void> {
 }
 
 export async function claimOnSolana(): Promise<void> {
-  const baseClient = getBaseReadClient();
+  const baseClient = await getBaseStatusClient();
   if (!state.solanaAccount) await connectSolana();
   const provider = getSolanaProvider();
   if (!provider) throw new Error("Solana wallet disconnected.");
@@ -121,7 +121,7 @@ export async function claimOnSolana(): Promise<void> {
 }
 
 async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
-  const baseClient = getBaseReadClient();
+  const baseClient = await getBaseStatusClient();
   const receipt = await baseClient.getTransactionReceipt({ hash: txHash }).catch(() => null);
   if (!receipt) {
     return { status: "waiting_for_base_tx", humanStatus: "Waiting for the Base transaction to appear.", txHash };
