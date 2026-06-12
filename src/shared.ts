@@ -80,10 +80,21 @@ export const state = {
   actionInFlight: false
 };
 
-export function getBaseClient() {
-  const transports: Transport[] = CONFIG.baseRpcUrls.map((url) =>
+function baseRpcTransports(): Transport[] {
+  return CONFIG.baseRpcUrls.map((url) =>
     http(url, { retryCount: 1, retryDelay: 500, timeout: 15_000 })
   );
+}
+
+export function getBaseReadClient() {
+  return createPublicClient({
+    chain: CONFIG.baseChain,
+    transport: fallback(baseRpcTransports(), { retryCount: 2, retryDelay: 750 })
+  });
+}
+
+export function getBaseClient() {
+  const transports: Transport[] = baseRpcTransports();
   if (window.ethereum) transports.unshift(custom(window.ethereum));
   return createPublicClient({
     chain: CONFIG.baseChain,

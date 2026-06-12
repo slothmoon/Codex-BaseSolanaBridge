@@ -151,9 +151,14 @@ export async function readVaultBalance(
 
 export function parseBaseToSolanaTransfer(messageDataHex: Hex): ParsedTransfer {
   const bytes = Buffer.from(hexToBytes(messageDataHex));
-  if (bytes.length < 94) throw new Error("The Base bridge message is shorter than expected.");
+  const transferLength = 94;
+  const emptyInstructionsLength = 4;
+  if (bytes.length < transferLength + emptyInstructionsLength) throw new Error("The Base bridge message is shorter than expected.");
   if (bytes[0] !== 1) throw new Error("This Base message is not a token transfer.");
   if (bytes[1] !== 1) throw new Error("This page only supports returning bridged SPL tokens.");
+  if (bytes.readUInt32LE(transferLength) !== 0 || bytes.length !== transferLength + emptyInstructionsLength) {
+    throw new Error("This bridge transaction includes extra Solana instructions. This simple interface only supports plain SPL token returns.");
+  }
 
   return {
     remoteToken: `0x${bytes.subarray(2, 22).toString("hex")}`,

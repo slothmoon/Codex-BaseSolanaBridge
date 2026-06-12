@@ -52,7 +52,7 @@ async function init(): Promise<void> {
   watchSolanaAccountChanges();
 
   const queryTx = new URLSearchParams(location.search).get("tx");
-  const savedTx = localStorage.getItem(STORAGE_KEY);
+  const savedTx = readSavedTx();
   const txHash = queryTx || savedTx || "";
   if (txHash && isHash(txHash)) {
     state.currentTxHash = txHash;
@@ -60,6 +60,14 @@ async function init(): Promise<void> {
     setStatus("Saved Base transaction loaded. Click Check status.");
   }
   if (queryTx) cleanTxQueryParam();
+}
+
+function readSavedTx(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 
 function cleanTxQueryParam(): void {

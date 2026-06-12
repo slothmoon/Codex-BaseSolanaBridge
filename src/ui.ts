@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "status-offset-v20";
+const BUILD_ID = "read-client-v21";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -245,7 +245,11 @@ export function readTxHash(): Hex {
 export function rememberTx(txHash: Hex): void {
   state.currentTxHash = txHash;
   $<HTMLInputElement>("txHash").value = txHash;
-  localStorage.setItem(STORAGE_KEY, txHash);
+  try {
+    localStorage.setItem(STORAGE_KEY, txHash);
+  } catch {
+    // Remembering the last tx is a convenience; bridge actions must not depend on browser storage.
+  }
 }
 
 export function errorMessage(error: unknown): string {
