@@ -6,6 +6,8 @@ import { state, type SolanaProvider } from "./shared";
 import { $, invalidateBurnValidation, setStatus, short } from "./ui";
 
 let activeSolanaProvider: SolanaProvider | null = null;
+const SOLANA_RESTORE_ATTEMPTS = 10;
+const SOLANA_RESTORE_DELAY_MS = 250;
 
 export async function connectBase(): Promise<void> {
   if (!window.ethereum) throw new Error("Install a Base-compatible wallet such as Coinbase Wallet or MetaMask.");
@@ -50,7 +52,7 @@ export async function connectSolana(): Promise<void> {
 }
 
 export function restoreSolanaConnection(): void {
-  syncSolanaConnection();
+  void restoreSolanaConnectionWithRetry();
 }
 
 export function watchSolanaAccountChanges(): void {
@@ -186,6 +188,18 @@ function syncSolanaConnection(): void {
   }
 
   if (state.solanaAccount) clearSolanaAccount();
+}
+
+async function restoreSolanaConnectionWithRetry(): Promise<void> {
+  for (let attempt = 0; attempt < SOLANA_RESTORE_ATTEMPTS; attempt += 1) {
+    syncSolanaConnection();
+    if (state.solanaAccount) return;
+    await sleep(SOLANA_RESTORE_DELAY_MS);
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function getProviderErrorCode(error: unknown): number | undefined {
