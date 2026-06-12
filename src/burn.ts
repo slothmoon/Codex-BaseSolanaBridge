@@ -12,6 +12,7 @@ import {
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI, FACTORY_ABI } from "./config";
 import {
+  assertMintSafeForBaseBurn,
   bytes32ToPubkey,
   deriveAta,
   getTokenVaultPda,
@@ -137,6 +138,7 @@ async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDeta
   const remoteMint = bytes32ToPubkey(remoteToken);
   setStatus("Checking the Solana mint, token program, decimals, ATA, and bridge vault...");
   const mintInfo = await readMintInfo(solana, remoteMint);
+  assertMintSafeForBaseBurn(mintInfo);
   if (Number(decimals) !== mintInfo.decimals) {
     throw new Error(`Decimal mismatch: Base wrapper uses ${decimals}, but the Solana mint uses ${mintInfo.decimals}. Nothing was submitted.`);
   }

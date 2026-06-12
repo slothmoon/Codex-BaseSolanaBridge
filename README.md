@@ -22,6 +22,7 @@ The page refuses to submit unless:
 - The wrapper authorizes the configured official Base bridge
 - The remote Solana mint exists
 - The mint is owned by Standard SPL Token or Token-2022
+- Token-2022 mints do not use return-unsafe extensions such as transfer fees, transfer hooks, default frozen accounts, non-transferable tokens, confidential transfer state, scaled UI amounts, or pausing
 - Base wrapper decimals match Solana mint decimals
 - The derived bridge vault exists and matches the mint and token program
 - The user's Base balance and bridge-vault balance cover the amount

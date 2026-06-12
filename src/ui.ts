@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "amount-clean-v13";
+const BUILD_ID = "token2022-guard-v14";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -104,6 +104,13 @@ export function renderDerived(details: ReturnDetails): void {
     ["Recipient ATA", details.recipientTokenAccount.toBase58(), true],
     ["Bridge vault", details.tokenVault.toBase58(), true]
   ];
+
+  if (details.mintInfo.token2022Extensions.length) {
+    rows.push([
+      "Token-2022 extensions",
+      details.mintInfo.token2022Extensions.map((extension) => extension.name).join(", ")
+    ]);
+  }
 
   if (details.amount) {
     rows.push([

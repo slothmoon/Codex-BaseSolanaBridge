@@ -20,6 +20,11 @@ const BRIDGE_PROTOCOL_CONFIG_OFFSET = 8 + 8 + 8 + 32 + 1 + 56 + 56;
 const PROVE_MESSAGE_DISCRIMINATOR = Buffer.from([172, 66, 78, 136, 158, 187, 47, 115]);
 const RELAY_MESSAGE_DISCRIMINATOR = Buffer.from([187, 90, 182, 138, 51, 248, 175, 98]);
 const CREATE_IDEMPOTENT_ATA_DISCRIMINATOR = Buffer.from([1]);
+const MINT_SIZE = 82;
+const TOKEN_ACCOUNT_SIZE = 165;
+const TOKEN_2022_MINT_ACCOUNT_TYPE = 1;
+const TLV_HEADER_SIZE = 4;
+const SAFE_TOKEN_2022_RETURN_EXTENSIONS = new Set([3, 18, 19, 20, 21, 22, 23]);
 
 export type BridgeState = {
   bridge: PublicKey;
@@ -39,6 +44,13 @@ export type MintInfo = {
   owner: PublicKey;
   decimals: number;
   tokenProgramLabel: "Standard SPL Token" | "Token-2022";
+  token2022Extensions: Token2022Extension[];
+};
+
+export type Token2022Extension = {
+  type: number;
+  name: string;
+  length: number;
 };
 
 export function pubkeyToBytes32(value: PublicKey | string): `0x${string}` {
@@ -102,18 +114,40 @@ export async function getSolanaBridgeState(connection: Connection, programId: st
 export async function readMintInfo(connection: Connection, mint: PublicKey): Promise<MintInfo> {
   const account = await connection.getAccountInfo(mint, "confirmed");
   if (!account) throw new Error(`Solana mint ${mint.toBase58()} was not found.`);
-  if (account.data.length < 82) throw new Error("The remote Solana account is not a valid SPL mint.");
+  if (account.data.length < MINT_SIZE) throw new Error("The remote Solana account is not a valid SPL mint.");
 
   let tokenProgramLabel: MintInfo["tokenProgramLabel"];
+  let token2022Extensions: Token2022Extension[] = [];
   if (account.owner.equals(TOKEN_PROGRAM_ID)) tokenProgramLabel = "Standard SPL Token";
-  else if (account.owner.equals(TOKEN_2022_PROGRAM_ID)) tokenProgramLabel = "Token-2022";
+  else if (account.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+    tokenProgramLabel = "Token-2022";
+    token2022Extensions = readToken2022MintExtensions(Buffer.from(account.data));
+  }
   else throw new Error(`Unsupported Solana token program: ${account.owner.toBase58()}. No transaction was submitted.`);
 
   return {
     owner: account.owner,
     decimals: account.data[44],
-    tokenProgramLabel
+    tokenProgramLabel,
+    token2022Extensions
   };
+}
+
+export function assertMintSafeForBaseBurn(mintInfo: MintInfo): void {
+  if (!mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) return;
+
+  const unsafe = mintInfo.token2022Extensions.filter((extension) =>
+    !SAFE_TOKEN_2022_RETURN_EXTENSIONS.has(extension.type)
+  );
+  if (!unsafe.length) return;
+
+  throw new Error(
+    [
+      "This Token-2022 mint uses extension(s) that this page will not return through the bridge:",
+      unsafe.map((extension) => extension.name).join(", "),
+      "No Base burn was submitted. These extensions can add transfer fees, hooks, freezes, pauses, confidential state, or other behavior that could make the Solana claim fail or credit less than the burned amount."
+    ].join(" ")
+  );
 }
 
 export async function readVaultBalance(
@@ -271,6 +305,71 @@ function createAtaIdempotentIx(
     ],
     data: CREATE_IDEMPOTENT_ATA_DISCRIMINATOR
   });
+}
+
+function readToken2022MintExtensions(data: Buffer): Token2022Extension[] {
+  if (data.length === MINT_SIZE) return [];
+  if (data.length <= TOKEN_ACCOUNT_SIZE || data[TOKEN_ACCOUNT_SIZE] !== TOKEN_2022_MINT_ACCOUNT_TYPE) {
+    throw new Error("The Token-2022 mint has an unexpected extension layout.");
+  }
+
+  const extensions: Token2022Extension[] = [];
+  let offset = TOKEN_ACCOUNT_SIZE + 1;
+  while (offset + TLV_HEADER_SIZE <= data.length) {
+    const type = data.readUInt16LE(offset);
+    const length = data.readUInt16LE(offset + 2);
+    offset += TLV_HEADER_SIZE;
+    if (type === 0 && length === 0) break;
+    if (offset + length > data.length) throw new Error("The Token-2022 mint has malformed extension data.");
+    if (type !== 0) extensions.push({ type, name: token2022ExtensionName(type), length });
+    offset += length;
+  }
+  return extensions;
+}
+
+function token2022ExtensionName(type: number): string {
+  switch (type) {
+    case 1:
+      return "TransferFeeConfig";
+    case 3:
+      return "MintCloseAuthority";
+    case 4:
+      return "ConfidentialTransferMint";
+    case 6:
+      return "DefaultAccountState";
+    case 9:
+      return "NonTransferable";
+    case 10:
+      return "InterestBearingConfig";
+    case 12:
+      return "PermanentDelegate";
+    case 14:
+      return "TransferHook";
+    case 16:
+      return "ConfidentialTransferFeeConfig";
+    case 18:
+      return "MetadataPointer";
+    case 19:
+      return "TokenMetadata";
+    case 20:
+      return "GroupPointer";
+    case 21:
+      return "TokenGroup";
+    case 22:
+      return "GroupMemberPointer";
+    case 23:
+      return "TokenGroupMember";
+    case 24:
+      return "ConfidentialMintBurn";
+    case 25:
+      return "ScaledUiAmountConfig";
+    case 26:
+      return "PausableConfig";
+    case 28:
+      return "PermissionedBurn";
+    default:
+      return `Unknown Token-2022 extension ${type}`;
+  }
 }
 
 function encodeProveMessage(input: {
