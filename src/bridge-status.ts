@@ -5,6 +5,7 @@ import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
+  estimateRecipientTokenAccountSpace,
   getIncomingMessagePda,
   getOutputRootPda,
   getSolanaBridgeState,
@@ -211,7 +212,8 @@ async function assertEnoughSol(
     required += BigInt(await solana.getMinimumBalanceForRentExemption(incomingMessageAccountSpace(status.messageData), "confirmed"));
   }
   if (!ataInfo) {
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(165, "confirmed"));
+    const mintInfo = await readMintInfo(solana, transfer.localMint);
+    required += BigInt(await solana.getMinimumBalanceForRentExemption(estimateRecipientTokenAccountSpace(mintInfo), "confirmed"));
   }
   required += 20_000n;
 

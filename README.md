@@ -1,4 +1,4 @@
-# Base → Solana SPL Return Bridge
+# Base -> Solana SPL Return Bridge
 
 A fully static, non-custodial web interface for users returning official Base-wrapped SPL tokens to their original Solana mint.
 
@@ -46,17 +46,17 @@ For testnet, copy `.env.example` to `.env` and set:
 VITE_BRIDGE_ENV=testnet
 ```
 
-## Deploy to Cloudflare Pages
+## Deploy to Vercel
 
-1. In Cloudflare, open **Workers & Pages** and create a Pages project from this GitHub repository.
+1. In Vercel, import the GitHub repository.
 2. Use the production branch `main`.
 3. Framework preset: **Vite**.
 4. Build command: `npm run build`.
 5. Build output directory: `dist`.
-6. No D1, R2, Functions, secrets, or runtime variables are required.
+6. No serverless functions, database, or secret runtime variables are required.
 7. Deploy.
 
-Cloudflare will provide a free URL such as `https://basesolanabridge.pages.dev` if that project name is available.
+Vercel will build and redeploy the static site whenever `main` is pushed.
 
 Optional build variables:
 
@@ -74,11 +74,11 @@ VITE_BASE_RPC_URLS=https://base-rpc.publicnode.com
 VITE_SOLANA_RPC_URL=https://solana-rpc.publicnode.com
 ```
 
-These endpoints are compiled into the production `dist` bundle. No Cloudflare runtime variables are needed.
+These endpoints are compiled into the production `dist` bundle. No Vercel runtime variables are needed unless you want to override them.
 
 ## Important operational notes
 
-- Base → Solana is not instant. The user must wait until validators register a sufficiently recent output root on Solana.
-- The user's Solana wallet pays transaction fees and rent for the per-message proof account, and possibly the ATA. Keeping about `0.005 SOL` available is recommended.
+- Base -> Solana is not instant. The user must wait until validators register a sufficiently recent output root on Solana.
+- The user's Solana wallet pays transaction fees and rent for the per-message proof account, and possibly the ATA. Keep a small SOL buffer available; Token-2022 ATAs may need more rent than ordinary SPL accounts.
 - The default Base public RPC is rate limited and not intended for production. The page first tries the connected Base wallet RPC, then configured `VITE_BASE_RPC_URLS` fallbacks. For production, configure at least one browser-compatible provider URL, preferably with domain restrictions.
 - The site is intentionally limited to returning official Base-wrapped SPL tokens. It does not support Base-native ERC-20s, ETH, SOL wrappers, arbitrary follow-up instructions, or subsidized relaying.

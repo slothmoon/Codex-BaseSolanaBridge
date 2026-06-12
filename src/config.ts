@@ -24,7 +24,7 @@ function rpcUrls(primary: string, fallbackUrl: string): string[] {
 const ENVIRONMENTS: Record<AppConfig["env"], AppConfig> = {
   mainnet: {
     env: "mainnet",
-    label: "Base Mainnet → Solana Mainnet",
+    label: "Base Mainnet -> Solana Mainnet",
     baseChain: base,
     baseBridge: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
     baseFactory: "0xDD56781d0509650f8C2981231B6C917f2d5d7dF2",
@@ -34,7 +34,7 @@ const ENVIRONMENTS: Record<AppConfig["env"], AppConfig> = {
   },
   testnet: {
     env: "testnet",
-    label: "Base Sepolia → Solana Devnet",
+    label: "Base Sepolia -> Solana Devnet",
     baseChain: baseSepolia,
     baseBridge: "0x01824a90d32A69022DdAEcC6C5C14Ed08dB4EB9B",
     baseFactory: "0x488EB7F7cb2568e31595D48cb26F63963Cc7565D",

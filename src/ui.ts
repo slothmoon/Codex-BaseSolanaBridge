@@ -253,7 +253,7 @@ export function errorMessage(error: unknown): string {
     return [
       "The Base RPC is temporarily rate limited. No transaction was submitted and no tokens moved.",
       "Connect your Base wallet and retry so the page can use the wallet RPC.",
-      "For a public deployment, set VITE_BASE_RPC_URLS in Cloudflare Pages to one or more browser-compatible production Base RPC URLs separated by commas."
+      "For a public deployment, set VITE_BASE_RPC_URLS in Vercel to one or more browser-compatible production Base RPC URLs separated by commas."
     ].join("\n");
   }
   return message;

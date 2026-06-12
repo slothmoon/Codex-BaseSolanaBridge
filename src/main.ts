@@ -59,6 +59,14 @@ async function init(): Promise<void> {
     $<HTMLInputElement>("txHash").value = txHash;
     setStatus("Saved Base transaction loaded. Click Check status.");
   }
+  if (queryTx) cleanTxQueryParam();
+}
+
+function cleanTxQueryParam(): void {
+  const url = new URL(location.href);
+  url.searchParams.delete("tx");
+  const query = url.searchParams.toString();
+  history.replaceState(null, "", `${url.pathname}${query ? `?${query}` : ""}${url.hash}`);
 }
 
 async function runSafely(task: () => Promise<unknown>): Promise<void> {
