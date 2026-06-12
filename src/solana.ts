@@ -222,7 +222,7 @@ export function incomingMessageAccountSpace(data: Hex): number {
 }
 
 export function readIncomingMessageExecuted(accountData: Buffer | Uint8Array, messageData: Hex): boolean {
-  const executedOffset = 8 + 20 + hexToBytes(messageData).length;
+  const executedOffset = 8 + 20 + 4 + hexToBytes(messageData).length;
   if (accountData.length <= executedOffset) throw new Error("The Solana incoming message account has an unexpected layout.");
   return accountData[executedOffset] === 1;
 }

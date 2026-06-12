@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "simple-claim-v19";
+const BUILD_ID = "status-offset-v20";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
