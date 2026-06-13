@@ -27,7 +27,7 @@ The page refuses to submit unless:
 - The user's Base balance and bridge-vault balance cover the amount
 - `Bridge.bridgeToken(...)` succeeds in an `eth_call` simulation
 
-For Token-2022 mints, the page detects mint extensions and shows a warning to try a small amount first. Support can vary by extension and bridge-program behavior, so the UI does not claim every Token-2022 feature is fully supported.
+For Token-2022 mints, the page detects the Token-2022 program owner and shows a warning to try a small amount first. Support can vary by token behavior and bridge-program behavior, so the UI does not claim every Token-2022 token is fully supported.
 
 The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
 

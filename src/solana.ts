@@ -130,7 +130,9 @@ export async function readVaultBalance(
 
   const data = Buffer.from(account.data);
   const vaultMint = new PublicKey(data.subarray(0, 32));
+  const vaultAuthority = new PublicKey(data.subarray(32, 64));
   if (!vaultMint.equals(mint)) throw new Error("The bridge vault mint does not match the wrapper's remote mint.");
+  if (!vaultAuthority.equals(vault)) throw new Error("The bridge vault authority does not match the expected vault PDA.");
   return data.readBigUInt64LE(64);
 }
 

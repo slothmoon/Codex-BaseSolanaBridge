@@ -3,7 +3,7 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "simple-token2022-warning-v27";
+const BUILD_ID = "audit-fixes-v28";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 

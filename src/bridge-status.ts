@@ -29,7 +29,7 @@ import { connectSolana, getSolanaProvider, requireBaseReady } from "./wallets";
 const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
 
 export async function checkStatus(): Promise<void> {
-  requireBaseReady();
+  await requireBaseReady();
   const txHash = readTxHash();
   setStatus("Reading the Base receipt and Solana bridge state...");
   const status = await refreshStatus(txHash);
@@ -38,7 +38,7 @@ export async function checkStatus(): Promise<void> {
 }
 
 export async function claimOnSolana(): Promise<void> {
-  requireBaseReady();
+  await requireBaseReady();
   const baseClient = getBaseClient();
   if (!state.solanaAccount) await connectSolana();
   const provider = getSolanaProvider();
