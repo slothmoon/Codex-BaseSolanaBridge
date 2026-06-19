@@ -88,13 +88,6 @@ function baseRpcTransports(): Transport[] {
   );
 }
 
-export function getBaseReadClient() {
-  return createPublicClient({
-    chain: CONFIG.baseChain,
-    transport: fallback(baseRpcTransports(), { retryCount: 2, retryDelay: 750 })
-  });
-}
-
 export function getBaseClient() {
   const transports: Transport[] = baseRpcTransports();
   if (window.ethereum) transports.unshift(custom(window.ethereum));

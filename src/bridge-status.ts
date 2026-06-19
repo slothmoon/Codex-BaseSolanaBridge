@@ -233,6 +233,13 @@ async function sendSolanaTransaction(provider: SolanaProvider, transaction: Tran
     } catch (error) {
       throw new Error(await formatSolanaError("Solana wallet signing failed", error, solana));
     }
+    const feePayer = signed.feePayer;
+    const payerSignature = feePayer
+      ? signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature
+      : null;
+    if (!payerSignature) {
+      throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
+    }
 
     try {
       const signature = await solana.sendRawTransaction(signed.serialize(), {
