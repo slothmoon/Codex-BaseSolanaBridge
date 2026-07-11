@@ -79,7 +79,11 @@ export function renderApp(): void {
       </section>
 
       <footer class="footer">
-        <p>Non-custodial <span>&middot;</span> Verified contracts <span>&middot;</span> Browser-built proof</p>
+        <p class="footer-features">Self-custodial <span>&middot;</span> Verified contracts <span>&middot;</span> Browser-built proof</p>
+        <div class="risk-notice" role="note" aria-label="Risk disclaimer">
+          <strong>Use at your own risk.</strong>
+          <p>This self-custodial software is provided &ldquo;as is&rdquo; without warranty. Transactions are irreversible, and you are solely responsible for verifying all details before signing.</p>
+        </div>
       </footer>
     </main>
   `;
