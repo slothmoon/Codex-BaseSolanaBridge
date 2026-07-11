@@ -90,7 +90,7 @@ function baseRpcTransports(): Transport[] {
 
 export function getBaseClient() {
   const transports: Transport[] = baseRpcTransports();
-  if (window.ethereum) transports.unshift(custom(window.ethereum));
+  if (window.ethereum && state.baseReady) transports.unshift(custom(window.ethereum));
   return createPublicClient({
     chain: CONFIG.baseChain,
     transport: fallback(transports, { retryCount: 2, retryDelay: 750 })

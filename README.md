@@ -6,8 +6,8 @@ There is no backend, database, relayer key, or server process. The browser reads
 
 ## What users provide
 
-- A connected Base wallet
-- A connected Solana wallet
+- A connected Base wallet to validate and submit the burn
+- A connected Solana wallet for the destination and claim
 - The official Base wrapped-SPL token address
 - The amount to return
 
@@ -32,6 +32,7 @@ For Token-2022 mints, the page detects the Token-2022 program owner and shows a 
 The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
 
 The Base transaction hash is saved to browser local storage. Users can also paste any prior burn transaction hash manually.
+Status checks and Solana claims do not require a connected Base wallet; configured public Base RPC fallbacks provide the read-only proof data needed for recovery.
 
 ## Local development
 

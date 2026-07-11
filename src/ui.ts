@@ -3,25 +3,21 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "audit-fixes-v28";
+const BUILD_ID = "simple-light-v1";
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 export function renderApp(): void {
   document.querySelector<HTMLDivElement>("#root")!.innerHTML = `
     <main class="shell">
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Base &rarr; Solana</p>
-          <h1>Return bridged SPL tokens to Solana</h1>
-          <p class="subcopy">A static, non-custodial interface. Your browser reads both chains, builds the proof transaction, and asks your wallets to sign.</p>
-        </div>
-        <div class="network" id="networkBox">${escapeHtml(CONFIG.label)}</div>
-      </section>
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Base to Solana bridge home">Base <span>&rarr;</span> Solana</a>
+        <div class="network" id="networkBox" title="${escapeHtml(CONFIG.label)}"><span class="network-dot" aria-hidden="true"></span>${CONFIG.env === "mainnet" ? "Mainnet" : "Testnet"}</div>
+      </header>
 
-      <section class="security-note">
-        <strong>No backend and no database.</strong>
-        This page never receives private keys or funds. Keep your Base transaction hash so you can return and claim later.
+      <section class="hero">
+        <h1>Return SPL tokens to Solana</h1>
+        <p class="subcopy">Burn wrapped tokens on Base and claim the original SPL tokens on Solana.</p>
       </section>
 
       <section class="grid">
@@ -29,64 +25,67 @@ export function renderApp(): void {
           <div class="panelHead">
             <span class="step">1</span>
             <div>
-              <h2>Burn the Base wrapper</h2>
-              <p>The page validates the official wrapper, mint, decimals, token program, bridge vault, balance, and Base simulation first.</p>
+              <h2>Burn on Base</h2>
+              <p>Validate the official wrapper and destination before signing.</p>
             </div>
           </div>
 
-          <label>Base wrapped SPL token address
+          <label>Wrapped token address
             <input id="localToken" placeholder="0x..." autocomplete="off" required />
           </label>
           <label>Amount
             <input id="amount" placeholder="0.1" inputmode="decimal" autocomplete="off" required />
           </label>
-          <div class="derived" id="derivedBox">Connect both wallets, enter a wrapper and amount, then preview the destination.</div>
-
-          <div class="buttonRow">
+          <div class="walletButtons">
             <button type="button" id="connectBase">Connect Base wallet</button>
             <button type="button" id="connectSolana">Connect Solana wallet</button>
-            <button type="button" id="deriveDetails" disabled>Validate and preview</button>
+          </div>
+          <div class="walletHints">
+            <p class="hint" id="baseWallet">Base wallet not connected.</p>
+            <p class="hint" id="solanaWallet">Solana wallet not connected.</p>
+          </div>
+
+          <div class="derived" id="derivedBox">
+            <span class="empty-label">Route preview</span>
+            <strong>Base &rarr; Solana</strong>
+            <span>Connect both wallets, enter a wrapper and amount, then validate.</span>
+          </div>
+
+          <p class="irreversible-note">Base burns are irreversible. Confirm the route and destination before signing.</p>
+
+          <div class="buttonStack">
+            <button type="button" class="secondary" id="deriveDetails" disabled>Validate route</button>
             <button type="submit" class="primary" id="burnButton" disabled>Burn on Base</button>
           </div>
-          <p class="hint" id="baseWallet">Base wallet not connected.</p>
-          <p class="hint" id="solanaWallet">Solana wallet not connected.</p>
         </form>
 
         <section class="panel">
           <div class="panelHead">
             <span class="step">2</span>
             <div>
-              <h2>Track and claim</h2>
-              <p>Paste the Base burn transaction hash, or use the one saved in this browser.</p>
+              <h2>Track &amp; claim</h2>
+              <p>Paste a Base burn hash. A Base wallet is not required for recovery.</p>
             </div>
           </div>
           <label>Base transaction hash
             <input id="txHash" placeholder="0x..." autocomplete="off" />
           </label>
-          <div class="buttonRow">
-            <button type="button" id="checkStatus" disabled>Check status</button>
+          <div id="statusBox" class="status" aria-live="polite">
+            <span class="empty-label">Status</span>
+            <strong>No transaction selected</strong>
+            <span>Paste a burn hash to check when the claim is ready.</span>
+          </div>
+          <div class="buttonStack claimActions">
+            <button type="button" class="secondary" id="checkStatus">Check status</button>
             <button type="button" id="claim" class="primary" disabled>Claim on Solana</button>
           </div>
-          <div id="statusBox" class="status">No transaction selected.</div>
         </section>
       </section>
 
-      <section class="notes">
-        <h2>How the return works</h2>
-        <ol>
-          <li>Your Base wallet burns the official wrapped SPL ERC-20 and emits a bridge message.</li>
-          <li>Validators register a Base output root on Solana.</li>
-          <li>Your browser generates the MMR proof and builds the Solana prove + relay transaction.</li>
-          <li>Your Solana wallet pays network fees and account rent, signs, and receives the unlocked SPL token in its ATA.</li>
-        </ol>
-      </section>
-
-      <section class="disclaimer">
-        <strong>Use at your own risk.</strong>
-        This interface is provided as-is, without warranties or guarantees. It is a non-custodial tool for interacting with the official bridge contracts and programs, but you are responsible for verifying the token, amount, destination wallet, and transaction results before moving meaningful funds.
-      </section>
-
-      <footer class="build-footer">Build ${BUILD_ID}</footer>
+      <footer class="footer">
+        <p>Non-custodial <span>&middot;</span> Official bridge <span>&middot;</span> Browser-built proof</p>
+        <small>${BUILD_ID}</small>
+      </footer>
     </main>
   `;
 }
@@ -108,8 +107,8 @@ export function syncBaseActionButtons(): void {
 
   if (deriveButton) deriveButton.disabled = !baseReady;
   if (burnButton) burnButton.disabled = !baseReady || !state.validatedBurnKey;
-  if (checkButton) checkButton.disabled = !baseReady;
-  if (claimButton) claimButton.disabled = !baseReady || !claimReady;
+  if (checkButton) checkButton.disabled = false;
+  if (claimButton) claimButton.disabled = !claimReady;
 }
 
 export function renderDerived(details: ReturnDetails): void {
@@ -135,14 +134,22 @@ export function renderDerived(details: ReturnDetails): void {
 
   $("derivedBox").innerHTML = `
     ${token2022Warning}
-    <dl class="validation-summary">
+    <div class="route-summary">
+      <div><span>Token</span><strong>${escapeHtml(details.symbol)}</strong></div>
+      <div><span>Amount</span><strong>${details.amount ? escapeHtml(formatUnits(details.amount, details.decimals)) : "&mdash;"}</strong></div>
+      <div><span>Destination</span><strong>${escapeHtml(short(details.recipientTokenAccount.toBase58()))}</strong></div>
+    </div>
+    <details class="technical-details">
+      <summary>Technical details <span>Verified</span></summary>
+      <dl class="validation-summary">
       ${rows.map(([label, value, address]) => `
         <div class="validation-row">
           <dt>${escapeHtml(label)}</dt>
           <dd${address ? ' class="address-value"' : ""}>${address ? renderCopyValue(value) : escapeHtml(value)}</dd>
         </div>
       `).join("")}
-    </dl>
+      </dl>
+    </details>
   `;
 }
 
@@ -209,11 +216,14 @@ export function renderStatus(status: BridgeStatus): void {
         `).join("")}
       </div>
 
-      <div class="status-sections">
-        ${transactionRows.length ? renderStatusSection("Transaction", transactionRows) : ""}
-        ${rootRows.length ? renderStatusSection("Output root", rootRows) : ""}
-        ${destinationRows.length ? renderStatusSection("Destination", destinationRows) : ""}
-      </div>
+      <details class="technical-details status-details">
+        <summary>Technical details <span>View</span></summary>
+        <div class="status-sections">
+          ${transactionRows.length ? renderStatusSection("Transaction", transactionRows) : ""}
+          ${rootRows.length ? renderStatusSection("Output root", rootRows) : ""}
+          ${destinationRows.length ? renderStatusSection("Destination", destinationRows) : ""}
+        </div>
+      </details>
     </div>
   `;
   syncBaseActionButtons();
@@ -222,6 +232,15 @@ export function renderStatus(status: BridgeStatus): void {
 export function setStatus(message: string, tone: "info" | "success" | "error" = "info"): void {
   $("statusBox").innerHTML = `
     <div class="status-message ${tone}">${escapeHtml(message).replace(/\n/g, "<br>")}</div>
+  `;
+}
+
+export function setLinkedStatus(message: string, linkLabel: string, href: string): void {
+  $("statusBox").innerHTML = `
+    <div class="status-message success">
+      ${escapeHtml(message).replace(/\n/g, "<br>")}
+      <a class="explorer-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(linkLabel)} &rarr;</a>
+    </div>
   `;
 }
 

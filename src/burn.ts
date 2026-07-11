@@ -11,6 +11,7 @@ import {
 } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI, FACTORY_ABI } from "./config";
+import { isBurnValidationCurrent } from "./bridge-logic";
 import {
   bytes32ToPubkey,
   deriveAta,
@@ -20,7 +21,7 @@ import {
   readVaultBalance
 } from "./solana";
 import { getBaseClient, solana, state, type ReturnDetails } from "./shared";
-import { $, errorMessage, invalidateBurnValidation, rememberTx, renderDerived, setStatus } from "./ui";
+import { $, errorMessage, invalidateBurnValidation, rememberTx, renderDerived, setLinkedStatus, setStatus } from "./ui";
 import { connectBase, connectSolana, ensureBaseNetwork } from "./wallets";
 
 export async function previewReturn(): Promise<void> {
@@ -37,13 +38,15 @@ export async function startBridge(): Promise<void> {
   if (!state.solanaAccount) await connectSolana();
   await ensureBaseNetwork();
 
-  if (!state.validatedBurnKey || state.validatedBurnKey !== currentBurnValidationKey()) {
+  const validatedBurnKey = state.validatedBurnKey;
+  if (!validatedBurnKey || validatedBurnKey !== currentBurnValidationKey()) {
     invalidateBurnValidation();
     throw new Error("Validate and preview the token and amount before burning.");
   }
 
   setStatus("Re-running all pre-burn checks...");
   const details = await validateReturnDetails(true);
+  assertBurnInputsUnchanged(validatedBurnKey);
   if (!details.amount) throw new Error("Enter an amount greater than zero.");
   renderDerived(details);
 
@@ -68,6 +71,7 @@ export async function startBridge(): Promise<void> {
   } catch (error) {
     throw new Error(`Base simulation failed. Nothing was burned. ${errorMessage(error)}`);
   }
+  assertBurnInputsUnchanged(validatedBurnKey);
 
   if (!window.ethereum) throw new Error("Base wallet disconnected.");
   const evmAccount = state.evmAccount;
@@ -78,6 +82,7 @@ export async function startBridge(): Promise<void> {
     account: evmAccount
   });
 
+  assertBurnInputsUnchanged(validatedBurnKey);
   setStatus("Confirm the burn transaction in your Base wallet.");
   const txHash = await wallet.sendTransaction({
     account: evmAccount,
@@ -91,7 +96,12 @@ export async function startBridge(): Promise<void> {
   });
 
   rememberTx(txHash);
-  setStatus(`Burn submitted on Base:\n${txHash}\n\nKeep this hash. Return later and click Check status.`);
+  const baseExplorer = CONFIG.baseChain.blockExplorers?.default.url || "https://basescan.org";
+  setLinkedStatus(
+    `Burn submitted on Base:\n${txHash}\n\nKeep this hash. Return later and click Check status.`,
+    "View on Base Explorer",
+    `${baseExplorer}/tx/${txHash}`
+  );
 }
 
 async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDetails> {
@@ -186,4 +196,11 @@ function currentBurnValidationKey(): string {
     $<HTMLInputElement>("localToken").value.trim().toLowerCase(),
     $<HTMLInputElement>("amount").value.trim()
   ].join("|");
+}
+
+function assertBurnInputsUnchanged(expectedKey: string): void {
+  if (!isBurnValidationCurrent(expectedKey, state.validatedBurnKey, currentBurnValidationKey())) {
+    invalidateBurnValidation();
+    throw new Error("Wallet, network, token, or amount changed during validation. Review the updated route and validate again before burning.");
+  }
 }

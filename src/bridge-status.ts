@@ -2,6 +2,7 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { decodeEventLog, formatUnits, getAddress, type Address, type Hex } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
+import { assertSingleBridgeEventCount, nextRootBlock, rootBlocksRemaining } from "./bridge-logic";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
@@ -22,14 +23,14 @@ import {
   lamportsToSol,
   readTxHash,
   renderStatus,
+  setLinkedStatus,
   setStatus
 } from "./ui";
-import { connectSolana, getSolanaProvider, requireBaseReady } from "./wallets";
+import { connectSolana, getSolanaProvider } from "./wallets";
 
 const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
 
 export async function checkStatus(): Promise<void> {
-  await requireBaseReady();
   const txHash = readTxHash();
   setStatus("Reading the Base receipt and Solana bridge state...");
   const status = await refreshStatus(txHash);
@@ -38,7 +39,6 @@ export async function checkStatus(): Promise<void> {
 }
 
 export async function claimOnSolana(): Promise<void> {
-  await requireBaseReady();
   const baseClient = getBaseClient();
   if (!state.solanaAccount) await connectSolana();
   const provider = getSolanaProvider();
@@ -119,7 +119,12 @@ export async function claimOnSolana(): Promise<void> {
 
   setStatus("Simulation passed. Confirm the Solana claim in your wallet.");
   const signature = await sendSolanaTransaction(provider, transaction);
-  setStatus(`Claim submitted on Solana:\n${signature}\n\nThe transaction has been broadcast. You can verify it in Solana Explorer.`);
+  const cluster = CONFIG.env === "testnet" ? "?cluster=devnet" : "";
+  setLinkedStatus(
+    `Claim submitted on Solana:\n${signature}\n\nThe transaction has been broadcast.`,
+    "View on Solana Explorer",
+    `https://explorer.solana.com/tx/${signature}${cluster}`
+  );
 }
 
 async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
@@ -193,7 +198,7 @@ async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
     status: "waiting_for_root",
     humanStatus: `Waiting for a Solana output root at or after Base block ${receipt.blockNumber}.`,
     nextEligibleRootBlock,
-    rootBlocksBehind: receipt.blockNumber - bridgeState.baseBlockNumber
+    rootBlocksBehind: rootBlocksRemaining(receipt.blockNumber, bridgeState.baseBlockNumber, bridgeState.blockIntervalRequirement)
   };
 }
 
@@ -270,6 +275,11 @@ function findMessageInitiated(receipt: { logs: readonly { address: Address; topi
   messageHash: Hex;
   message: { nonce: bigint; sender: Hex; data: Hex };
 } | null {
+  const events: Array<{
+    messageHash: Hex;
+    message: { nonce: bigint; sender: Hex; data: Hex };
+  }> = [];
+
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== CONFIG.baseBridge.toLowerCase()) continue;
     try {
@@ -283,18 +293,12 @@ function findMessageInitiated(receipt: { logs: readonly { address: Address; topi
           messageHash: Hex;
           message: { nonce: bigint; sender: Hex; data: Hex };
         };
-        return { messageHash: args.messageHash, message: args.message };
+        events.push({ messageHash: args.messageHash, message: args.message });
       }
     } catch {
       // Ignore unrelated logs emitted by the bridge address.
     }
   }
-  return null;
-}
-
-function nextRootBlock(baseBlockNumber: bigint, interval: bigint): bigint {
-  if (interval === 0n) return baseBlockNumber;
-  return baseBlockNumber % interval === 0n
-    ? baseBlockNumber
-    : baseBlockNumber + (interval - (baseBlockNumber % interval));
+  assertSingleBridgeEventCount(events.length);
+  return events[0] || null;
 }
