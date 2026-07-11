@@ -167,9 +167,9 @@ function renderToken2022Warning(details: ReturnDetails): string {
 
   return `
     <div class="token-warning">
-      <strong>Token-2022 support can vary.</strong>
-      This page found Token-2022 mint data for this asset. Before returning your full balance, try a very small amount first and confirm the claim lands in your Solana wallet.
-      If this token needs extra account rent, the Solana simulation will stop before signing and ask you to add more SOL.
+      <strong>Token-2022 route: test with a small amount first.</strong>
+      Token-2022 extensions can charge transfer fees, change the amount received, or prevent the Solana claim. This interface detects Token-2022 but cannot verify every extension.
+      Confirm a small return reaches your Solana wallet before burning the rest. A failed claim does not undo the Base burn.
     </div>
   `;
 }

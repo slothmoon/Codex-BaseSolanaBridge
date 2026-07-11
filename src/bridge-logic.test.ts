@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertBridgeActive,
   assertSingleBridgeEventCount,
   isBurnValidationCurrent,
   nextRootBlock,
   rootBlocksRemaining
 } from "./bridge-logic";
+
+describe("Solana bridge safety", () => {
+  it("allows an active bridge and blocks a paused bridge", () => {
+    expect(() => assertBridgeActive(false)).not.toThrow();
+    expect(() => assertBridgeActive(true)).toThrow(/currently paused/i);
+  });
+});
 
 describe("burn validation", () => {
   it("accepts an unchanged validated route", () => {

@@ -2,7 +2,7 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { decodeEventLog, formatUnits, getAddress, type Address, type Hex } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
-import { assertSingleBridgeEventCount, nextRootBlock, rootBlocksRemaining } from "./bridge-logic";
+import { assertBridgeActive, assertSingleBridgeEventCount, nextRootBlock, rootBlocksRemaining } from "./bridge-logic";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
@@ -149,7 +149,7 @@ async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
       functionName: "symbol"
     }).catch(() => "")
   ]);
-  if (bridgeState.paused) throw new Error("The Solana bridge is currently paused. Do not submit a claim until it is unpaused.");
+  assertBridgeActive(bridgeState.paused);
   const displayAmount = `${formatUnits(transfer.amount, mintInfo.decimals)}${tokenSymbol ? ` ${tokenSymbol}` : ""}`;
 
   const incomingMessage = getIncomingMessagePda(CONFIG.solanaBridgeProgram, event.messageHash);

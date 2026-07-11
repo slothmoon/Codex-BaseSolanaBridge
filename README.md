@@ -20,6 +20,7 @@ The page refuses to submit unless:
 - The Base address contains contract code
 - The official CrossChainERC20Factory returns `true` from `isCrossChainErc20(wrapper)`
 - The wrapper authorizes the configured official Base bridge
+- The configured Solana bridge is not paused
 - The remote Solana mint exists
 - The mint is owned by Standard SPL Token or Token-2022
 - Base wrapper decimals match Solana mint decimals

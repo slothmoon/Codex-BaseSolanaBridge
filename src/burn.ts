@@ -11,10 +11,11 @@ import {
 } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI, FACTORY_ABI } from "./config";
-import { isBurnValidationCurrent } from "./bridge-logic";
+import { assertBridgeActive, isBurnValidationCurrent } from "./bridge-logic";
 import {
   bytes32ToPubkey,
   deriveAta,
+  getSolanaBridgeState,
   getTokenVaultPda,
   pubkeyToBytes32,
   readMintInfo,
@@ -148,8 +149,12 @@ async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDeta
   }
 
   const remoteMint = bytes32ToPubkey(remoteToken);
-  setStatus("Checking the Solana mint, token program, decimals, ATA, and bridge vault...");
-  const mintInfo = await readMintInfo(solana, remoteMint);
+  setStatus("Checking the Solana bridge, mint, token program, decimals, ATA, and vault...");
+  const [bridgeState, mintInfo] = await Promise.all([
+    getSolanaBridgeState(solana, CONFIG.solanaBridgeProgram),
+    readMintInfo(solana, remoteMint)
+  ]);
+  assertBridgeActive(bridgeState.paused);
   if (Number(decimals) !== mintInfo.decimals) {
     throw new Error(`Decimal mismatch: Base wrapper uses ${decimals}, but the Solana mint uses ${mintInfo.decimals}. Nothing was submitted.`);
   }
