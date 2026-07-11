@@ -146,7 +146,7 @@ export function renderDerived(details: ReturnDetails): void {
     <div class="route-summary">
       <div><span>Token</span><strong>${escapeHtml(details.symbol)}</strong></div>
       <div><span>Amount</span><strong>${details.amount ? escapeHtml(formatUnits(details.amount, details.decimals)) : "&mdash;"}</strong></div>
-      <div><span>Destination</span><strong>${escapeHtml(short(details.recipientTokenAccount.toBase58()))}</strong></div>
+      <div><span>Recipient wallet</span><strong>${escapeHtml(short(state.solanaAccount))}</strong></div>
     </div>
     <details class="technical-details">
       <summary>Technical details <span>Verified</span></summary>
