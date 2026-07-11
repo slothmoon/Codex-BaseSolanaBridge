@@ -3,8 +3,6 @@ import { formatUnits, isHash, type Hex } from "viem";
 import { CONFIG } from "./config";
 import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./shared";
 
-const BUILD_ID = "simple-light-v1";
-
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 export function renderApp(): void {
@@ -26,7 +24,6 @@ export function renderApp(): void {
             <span class="step">1</span>
             <div>
               <h2>Burn on Base</h2>
-              <p>Validate the official wrapper and destination before signing.</p>
             </div>
           </div>
 
@@ -54,8 +51,8 @@ export function renderApp(): void {
           <p class="irreversible-note">Base burns are irreversible. Confirm the route and destination before signing.</p>
 
           <div class="buttonStack">
-            <button type="button" class="secondary" id="deriveDetails" disabled>Validate route</button>
-            <button type="submit" class="primary" id="burnButton" disabled>Burn on Base</button>
+            <button type="button" class="primary" id="deriveDetails" disabled>Validate route</button>
+            <button type="submit" class="primary" id="burnButton" hidden disabled>Burn on Base</button>
           </div>
         </form>
 
@@ -64,7 +61,6 @@ export function renderApp(): void {
             <span class="step">2</span>
             <div>
               <h2>Track &amp; claim</h2>
-              <p>Paste a Base burn hash. A Base wallet is not required for recovery.</p>
             </div>
           </div>
           <label>Base transaction hash
@@ -83,8 +79,7 @@ export function renderApp(): void {
       </section>
 
       <footer class="footer">
-        <p>Non-custodial <span>&middot;</span> Official bridge <span>&middot;</span> Browser-built proof</p>
-        <small>${BUILD_ID}</small>
+        <p>Non-custodial <span>&middot;</span> Verified contracts <span>&middot;</span> Browser-built proof</p>
       </footer>
     </main>
   `;
@@ -93,7 +88,15 @@ export function renderApp(): void {
 export function invalidateBurnValidation(): void {
   state.validatedBurnKey = "";
   const burnButton = document.getElementById("burnButton") as HTMLButtonElement | null;
-  if (burnButton) burnButton.disabled = true;
+  const deriveButton = document.getElementById("deriveDetails") as HTMLButtonElement | null;
+  if (burnButton) {
+    burnButton.disabled = true;
+    burnButton.hidden = true;
+  }
+  if (deriveButton) {
+    deriveButton.hidden = false;
+    deriveButton.disabled = !(state.evmAccount && state.baseReady);
+  }
 }
 
 export function syncBaseActionButtons(): void {
@@ -105,8 +108,14 @@ export function syncBaseActionButtons(): void {
   const checkButton = document.getElementById("checkStatus") as HTMLButtonElement | null;
   const claimButton = document.getElementById("claim") as HTMLButtonElement | null;
 
-  if (deriveButton) deriveButton.disabled = !baseReady;
-  if (burnButton) burnButton.disabled = !baseReady || !state.validatedBurnKey;
+  if (deriveButton) {
+    deriveButton.disabled = !baseReady;
+    deriveButton.hidden = Boolean(state.validatedBurnKey);
+  }
+  if (burnButton) {
+    burnButton.disabled = !baseReady || !state.validatedBurnKey;
+    burnButton.hidden = !state.validatedBurnKey;
+  }
   if (checkButton) checkButton.disabled = false;
   if (claimButton) claimButton.disabled = !claimReady;
 }

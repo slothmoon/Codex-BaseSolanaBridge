@@ -29,7 +29,11 @@ export async function previewReturn(): Promise<void> {
   const details = await validateReturnDetails(true);
   renderDerived(details);
   state.validatedBurnKey = currentBurnValidationKey();
-  $<HTMLButtonElement>("burnButton").disabled = false;
+  const deriveButton = $<HTMLButtonElement>("deriveDetails");
+  const burnButton = $<HTMLButtonElement>("burnButton");
+  deriveButton.hidden = true;
+  burnButton.hidden = false;
+  burnButton.disabled = false;
   setStatus("All checks passed, including the official factory check. Review the destination and click Burn on Base.");
 }
 
