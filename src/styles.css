@@ -24,7 +24,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 h1, h2, h3, h4, p { margin-top: 0; }
 
 .shell {
-  width: min(1424px, calc(100% - 96px));
+  width: min(1920px, calc(100% - 96px));
   margin: 0 auto;
   padding-bottom: 36px;
 }
@@ -74,15 +74,17 @@ h1 {
 }
 .subcopy { max-width: 680px; margin-bottom: 0; color: var(--muted); font-size: .98rem; }
 
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 .panel {
   min-width: 0;
+  height: 100%;
   padding: clamp(22px, 3vw, 30px);
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
   box-shadow: 0 8px 24px rgba(17, 24, 39, .035);
 }
+.grid > section.panel { display: flex; flex-direction: column; }
 .panelHead { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 14px; align-items: center; margin-bottom: 28px; }
 .step {
   display: grid;
@@ -144,7 +146,7 @@ button.secondary { border-color: #aeb9ca; background: #fff; }
 button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .buttonStack { display: grid; gap: 9px; margin-top: 14px; }
 .buttonStack button { width: 100%; min-height: 48px; }
-.claimActions { margin-top: 17px; }
+.claimActions { margin-top: auto; padding-top: 17px; }
 
 .derived, .status {
   display: grid;
