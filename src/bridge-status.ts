@@ -2,10 +2,17 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { decodeEventLog, formatUnits, getAddress, type Address, type Hex } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
-import { assertBridgeActive, assertSingleBridgeEventCount, nextRootBlock, rootBlocksRemaining } from "./bridge-logic";
+import {
+  assertBridgeActive,
+  assertSingleBridgeEventCount,
+  isTransactionReceiptPending,
+  nextRootBlock,
+  rootBlocksRemaining
+} from "./bridge-logic";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
+  getBlockheightConfirmationStrategy,
   getIncomingMessagePda,
   getOutputRootPda,
   getSolanaBridgeState,
@@ -129,9 +136,14 @@ export async function claimOnSolana(): Promise<void> {
 
 async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
   const baseClient = getBaseClient();
-  const receipt = await baseClient.getTransactionReceipt({ hash: txHash }).catch(() => null);
-  if (!receipt) {
-    return { status: "waiting_for_base_tx", humanStatus: "Waiting for the Base transaction to appear.", txHash };
+  let receipt;
+  try {
+    receipt = await baseClient.getTransactionReceipt({ hash: txHash });
+  } catch (error) {
+    if (isTransactionReceiptPending(error)) {
+      return { status: "waiting_for_base_tx", humanStatus: "Waiting for the Base transaction to appear.", txHash };
+    }
+    throw error;
   }
 
   const event = findMessageInitiated(receipt);
@@ -251,7 +263,7 @@ async function sendSolanaTransaction(provider: SolanaProvider, transaction: Tran
         preflightCommitment: "confirmed",
         skipPreflight: false
       });
-      await solana.confirmTransaction(signature, "confirmed");
+      await solana.confirmTransaction(getBlockheightConfirmationStrategy(transaction, signature), "confirmed");
       return signature;
     } catch (error) {
       throw new Error(await formatSolanaError("Solana broadcast failed", error, solana));
@@ -261,7 +273,7 @@ async function sendSolanaTransaction(provider: SolanaProvider, transaction: Tran
   if (provider.signAndSendTransaction) {
     try {
       const { signature } = await provider.signAndSendTransaction(transaction);
-      await solana.confirmTransaction(signature, "confirmed");
+      await solana.confirmTransaction(getBlockheightConfirmationStrategy(transaction, signature), "confirmed");
       return signature;
     } catch (error) {
       throw new Error(await formatSolanaError("Solana wallet send failed", error, solana));

@@ -247,7 +247,7 @@ async function createBaseClaimTransaction(
   return tx;
 }
 
-function createRelayInstruction(
+export function createRelayInstruction(
   program: PublicKey,
   incomingMessage: PublicKey,
   bridge: PublicKey,
@@ -290,7 +290,7 @@ function createAtaIdempotentIx(
   });
 }
 
-function encodeProveMessage(input: {
+export function encodeProveMessage(input: {
   nonce: bigint;
   sender: Hex;
   data: Hex;
@@ -305,6 +305,15 @@ function encodeProveMessage(input: {
     vecFixed32(input.proof.map((item) => Buffer.from(hexToBytes(item)))),
     Buffer.from(hexToBytes(input.messageHash))
   ]);
+}
+
+export function getBlockheightConfirmationStrategy(transaction: Transaction, signature: string) {
+  const blockhash = transaction.recentBlockhash;
+  const lastValidBlockHeight = transaction.lastValidBlockHeight;
+  if (!blockhash || lastValidBlockHeight === undefined) {
+    throw new Error("The Solana transaction is missing its blockhash expiry information. Rebuild the claim and retry.");
+  }
+  return { signature, blockhash, lastValidBlockHeight };
 }
 
 function vecU8(bytes: Buffer): Buffer {

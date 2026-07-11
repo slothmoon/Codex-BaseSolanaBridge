@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { TransactionReceiptNotFoundError } from "viem";
 
 import {
   assertBridgeActive,
   assertSingleBridgeEventCount,
   isBurnValidationCurrent,
+  isTransactionReceiptPending,
   nextRootBlock,
   rootBlocksRemaining
 } from "./bridge-logic";
+
+describe("Base receipt classification", () => {
+  it("treats only receipt-not-found errors as pending", () => {
+    const pending = new TransactionReceiptNotFoundError({ hash: `0x${"11".repeat(32)}` });
+    expect(isTransactionReceiptPending(pending)).toBe(true);
+    expect(isTransactionReceiptPending(new Error("RPC timeout"))).toBe(false);
+  });
+
+  it("recognizes a wrapped receipt-not-found cause", () => {
+    const pending = new TransactionReceiptNotFoundError({ hash: `0x${"22".repeat(32)}` });
+    expect(isTransactionReceiptPending({ name: "FallbackTransportError", cause: pending })).toBe(true);
+  });
+});
 
 describe("Solana bridge safety", () => {
   it("allows an active bridge and blocks a paused bridge", () => {
