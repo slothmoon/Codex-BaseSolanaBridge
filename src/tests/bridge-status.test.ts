@@ -1,8 +1,77 @@
-import { describe, expect, it } from "vitest";
+import { Buffer } from "buffer";
+import { PublicKey } from "@solana/web3.js";
+import { TransactionReceiptNotFoundError, encodeAbiParameters, encodeEventTopics } from "viem";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { classifyAvailableMessage } from "../bridge-status";
+import { classifyAvailableMessage, refreshStatus } from "../bridge-status";
+import { BRIDGE_ABI, CONFIG } from "../config";
+import * as shared from "../shared";
+import * as solanaHelpers from "../solana";
 
 const txHash = `0x${"11".repeat(32)}` as const;
+
+afterEach(() => vi.restoreAllMocks());
+
+function bridgeReceipt() {
+  const mint = new PublicKey(new Uint8Array(32).fill(0x22));
+  const destination = new PublicKey(new Uint8Array(32).fill(0x33));
+  const messageBytes = Buffer.alloc(98);
+  messageBytes[0] = 1;
+  messageBytes[1] = 1;
+  Buffer.alloc(20, 0x44).copy(messageBytes, 2);
+  mint.toBuffer().copy(messageBytes, 22);
+  destination.toBuffer().copy(messageBytes, 54);
+  messageBytes.writeBigUInt64LE(1_250_000n, 86);
+  const messageData = `0x${messageBytes.toString("hex")}` as const;
+  const messageHash = `0x${"55".repeat(32)}` as const;
+  const mmrRoot = `0x${"66".repeat(32)}` as const;
+  const sender = `0x${"77".repeat(20)}` as const;
+  const topics = encodeEventTopics({
+    abi: BRIDGE_ABI,
+    eventName: "MessageInitiated",
+    args: { messageHash, mmrRoot }
+  });
+  const data = encodeAbiParameters([{
+    type: "tuple",
+    components: [
+      { name: "nonce", type: "uint64" },
+      { name: "sender", type: "address" },
+      { name: "data", type: "bytes" }
+    ]
+  }], [{ nonce: 5n, sender, data: messageData }]);
+  return {
+    receipt: {
+      blockNumber: 700n,
+      logs: [{ address: CONFIG.baseBridge, topics, data }]
+    },
+    messageData,
+    mint
+  };
+}
+
+function mockReadyReads(incomingData: Buffer | null = null) {
+  const { receipt, messageData, mint } = bridgeReceipt();
+  const baseClient = {
+    getTransactionReceipt: vi.fn().mockResolvedValue(receipt),
+    readContract: vi.fn().mockResolvedValue("TEST")
+  };
+  vi.spyOn(shared, "getBaseClient").mockReturnValue(baseClient as never);
+  vi.spyOn(solanaHelpers, "getSolanaBridgeState").mockResolvedValue({
+    bridge: new PublicKey(new Uint8Array(32).fill(0x88)),
+    baseBlockNumber: 900n,
+    blockIntervalRequirement: 300n,
+    paused: false
+  });
+  vi.spyOn(solanaHelpers, "readMintInfo").mockResolvedValue({
+    owner: solanaHelpers.TOKEN_PROGRAM_ID,
+    decimals: 6,
+    tokenProgramLabel: "Standard SPL Token"
+  });
+  vi.spyOn(shared.solana, "getAccountInfo").mockResolvedValue(incomingData
+    ? { data: incomingData } as never
+    : null);
+  return { messageData, mint };
+}
 
 function classify(input: {
   incomingExecuted?: boolean | null;
@@ -58,5 +127,51 @@ describe("available bridge message classification", () => {
     expect(status.nextEligibleRootBlock).toBe(900n);
     expect(status.rootBlocksBehind).toBe(300n);
     expect(status.humanStatus).toMatch(/status checks remain available/i);
+  });
+});
+
+describe("refreshStatus orchestration", () => {
+  it("classifies a missing receipt as pending", async () => {
+    const pending = new TransactionReceiptNotFoundError({ hash: txHash });
+    vi.spyOn(shared, "getBaseClient").mockReturnValue({
+      getTransactionReceipt: vi.fn().mockRejectedValue(pending)
+    } as never);
+
+    await expect(refreshStatus(txHash)).resolves.toMatchObject({ status: "waiting_for_base_tx" });
+  });
+
+  it("reports a mined transaction without a bridge event", async () => {
+    vi.spyOn(shared, "getBaseClient").mockReturnValue({
+      getTransactionReceipt: vi.fn().mockResolvedValue({ blockNumber: 700n, logs: [] })
+    } as never);
+
+    await expect(refreshStatus(txHash)).resolves.toMatchObject({ status: "not_bridge_tx" });
+  });
+
+  it("assembles a ready-to-claim status from Base and Solana reads", async () => {
+    const { mint } = mockReadyReads();
+
+    await expect(refreshStatus(txHash)).resolves.toMatchObject({
+      status: "ready_to_claim",
+      displayAmount: "1.25 TEST",
+      transfer: { amount: 1_250_000n, localMint: mint }
+    });
+  });
+
+  it("detects an already executed incoming message", async () => {
+    const { messageData } = bridgeReceipt();
+    const accountData = Buffer.alloc(8 + 20 + Buffer.from(messageData.slice(2), "hex").length + 1);
+    accountData[accountData.length - 1] = 1;
+    mockReadyReads(accountData);
+
+    await expect(refreshStatus(txHash)).resolves.toMatchObject({ status: "claimed" });
+  });
+
+  it("propagates non-pending RPC failures", async () => {
+    vi.spyOn(shared, "getBaseClient").mockReturnValue({
+      getTransactionReceipt: vi.fn().mockRejectedValue(new Error("RPC unavailable"))
+    } as never);
+
+    await expect(refreshStatus(txHash)).rejects.toThrow(/RPC unavailable/);
   });
 });
