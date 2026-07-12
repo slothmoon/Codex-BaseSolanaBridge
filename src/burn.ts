@@ -138,15 +138,7 @@ async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDeta
   const [official, remoteToken, decimals, symbol, wrapperBridge, wrapperBalance] = results as readonly [
     boolean, Hex, number, string, Address, bigint
   ];
-  if (!official) {
-    throw new Error(
-      `Unsupported token: factory ${CONFIG.baseFactory} returned false for isCrossChainErc20(${localToken}). Nothing was submitted.`
-    );
-  }
-
-  if (getAddress(wrapperBridge) !== getAddress(CONFIG.baseBridge)) {
-    throw new Error("Unsupported wrapper: its authorized bridge is not the official bridge configured by this page.");
-  }
+  assertOfficialWrapper(official, localToken, wrapperBridge);
 
   const remoteMint = bytes32ToPubkey(remoteToken);
   setStatus("Checking the Solana bridge, mint, token program, decimals, ATA, and vault...");
@@ -155,9 +147,7 @@ async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDeta
     readMintInfo(solana, remoteMint)
   ]);
   assertBridgeActive(bridgeState.paused);
-  if (Number(decimals) !== mintInfo.decimals) {
-    throw new Error(`Decimal mismatch: Base wrapper uses ${decimals}, but the Solana mint uses ${mintInfo.decimals}. Nothing was submitted.`);
-  }
+  assertMatchingDecimals(Number(decimals), mintInfo.decimals);
 
   const solanaWallet = new PublicKey(state.solanaAccount);
   const recipientTokenAccount = deriveAta(solanaWallet, remoteMint, mintInfo.owner);
@@ -167,20 +157,13 @@ async function validateReturnDetails(requireAmount: boolean): Promise<ReturnDeta
   let amount: bigint | undefined;
   const amountInput = $<HTMLInputElement>("amount").value.trim();
   if (requireAmount || amountInput) {
-    if (!amountInput) throw new Error("Enter the amount to return.");
-    try {
-      amount = parseUnits(amountInput, Number(decimals));
-    } catch {
-      throw new Error(`Invalid amount. ${symbol} supports up to ${decimals} decimal places.`);
-    }
-    if (amount <= 0n) throw new Error("Amount must be greater than zero.");
-    if (amount > 2n ** 64n - 1n) throw new Error("Amount is too large for the bridge's uint64 Solana amount.");
-    if (amount > wrapperBalance) {
-      throw new Error(`Insufficient Base balance. Wallet has ${formatUnits(wrapperBalance, Number(decimals))} ${symbol}.`);
-    }
-    if (amount > vaultBalance) {
-      throw new Error(`The Solana bridge vault has only ${formatUnits(vaultBalance, mintInfo.decimals)} ${symbol} available.`);
-    }
+    amount = validateBridgeAmount({
+      amountInput,
+      decimals: Number(decimals),
+      symbol,
+      wrapperBalance,
+      vaultBalance
+    });
   }
 
   return {
@@ -205,6 +188,54 @@ function currentBurnValidationKey(): string {
     $<HTMLInputElement>("localToken").value.trim().toLowerCase(),
     $<HTMLInputElement>("amount").value.trim()
   ].join("|");
+}
+
+export function assertOfficialWrapper(official: boolean, localToken: Address, wrapperBridge: Address): void {
+  if (!official) {
+    throw new Error(
+      `Unsupported token: factory ${CONFIG.baseFactory} returned false for isCrossChainErc20(${localToken}). Nothing was submitted.`
+    );
+  }
+  if (getAddress(wrapperBridge) !== getAddress(CONFIG.baseBridge)) {
+    throw new Error("Unsupported wrapper: its authorized bridge is not the official bridge configured by this page.");
+  }
+}
+
+export function assertMatchingDecimals(wrapperDecimals: number, mintDecimals: number): void {
+  if (wrapperDecimals !== mintDecimals) {
+    throw new Error(`Decimal mismatch: Base wrapper uses ${wrapperDecimals}, but the Solana mint uses ${mintDecimals}. Nothing was submitted.`);
+  }
+}
+
+export function validateBridgeAmount(input: {
+  amountInput: string;
+  decimals: number;
+  symbol: string;
+  wrapperBalance: bigint;
+  vaultBalance: bigint;
+}): bigint {
+  const { amountInput, decimals, symbol, wrapperBalance, vaultBalance } = input;
+  if (!amountInput) throw new Error("Enter the amount to return.");
+  const decimalMatch = amountInput.match(/^(?:\d+)(?:\.(\d+))?$/);
+  if (!decimalMatch || (decimalMatch[1]?.length ?? 0) > decimals) {
+    throw new Error(`Invalid amount. ${symbol} supports up to ${decimals} decimal places.`);
+  }
+
+  let amount: bigint;
+  try {
+    amount = parseUnits(amountInput, decimals);
+  } catch {
+    throw new Error(`Invalid amount. ${symbol} supports up to ${decimals} decimal places.`);
+  }
+  if (amount <= 0n) throw new Error("Amount must be greater than zero.");
+  if (amount > 2n ** 64n - 1n) throw new Error("Amount is too large for the bridge's uint64 Solana amount.");
+  if (amount > wrapperBalance) {
+    throw new Error(`Insufficient Base balance. Wallet has ${formatUnits(wrapperBalance, decimals)} ${symbol}.`);
+  }
+  if (amount > vaultBalance) {
+    throw new Error(`The Solana bridge vault has only ${formatUnits(vaultBalance, decimals)} ${symbol} available.`);
+  }
+  return amount;
 }
 
 function assertBurnInputsUnchanged(expectedKey: string): void {

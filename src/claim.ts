@@ -51,6 +51,9 @@ export async function claimOnSolana(): Promise<void> {
   if (status.status !== "ready_to_claim" && status.status !== "proof_created") {
     throw new Error(status.humanStatus);
   }
+  if (status.bridgePaused) {
+    throw new Error("The Solana bridge is currently paused. Claiming is temporarily unavailable; retry the same Base transaction later.");
+  }
   if (!status.messageData || !status.messageHash || status.messageNonce === undefined || !status.sender || !status.incomingMessage) {
     throw new Error("The bridge message is incomplete.");
   }

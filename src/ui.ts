@@ -109,7 +109,8 @@ export function invalidateBurnValidation(): void {
 
 export function syncBaseActionButtons(): void {
   const baseReady = Boolean(state.evmAccount && state.baseReady);
-  const claimReady = state.currentStatus?.status === "ready_to_claim" || state.currentStatus?.status === "proof_created";
+  const claimReady = !state.currentStatus?.bridgePaused
+    && (state.currentStatus?.status === "ready_to_claim" || state.currentStatus?.status === "proof_created");
 
   const deriveButton = document.getElementById("deriveDetails") as HTMLButtonElement | null;
   const burnButton = document.getElementById("burnButton") as HTMLButtonElement | null;
@@ -209,10 +210,12 @@ function renderToken2022Warning(details: ReturnDetails): string {
 
 export function renderStatus(status: BridgeStatus): void {
   const claim = $<HTMLButtonElement>("claim");
-  claim.disabled = status.status !== "ready_to_claim" && status.status !== "proof_created";
+  claim.disabled = Boolean(status.bridgePaused) || (status.status !== "ready_to_claim" && status.status !== "proof_created");
 
-  const badge = getStatusBadge(status.status);
-  const progress = getProgressSteps(status.status);
+  const badge = status.bridgePaused && status.status !== "claimed"
+    ? { label: "Paused", tone: "warning" }
+    : getStatusBadge(status.status);
+  const progress = getProgressSteps(status.status, Boolean(status.bridgePaused));
   const transfer = status.transfer;
 
   const transactionRows: Array<[string, string, boolean?]> = [
@@ -239,7 +242,7 @@ export function renderStatus(status: BridgeStatus): void {
       <div class="status-header">
         <div>
           <p class="status-kicker">Bridge status</p>
-          <h3>${escapeHtml(getStatusTitle(status.status))}</h3>
+          <h3>${escapeHtml(getStatusTitle(status.status, Boolean(status.bridgePaused)))}</h3>
           <p class="status-summary">${escapeHtml(status.humanStatus)}</p>
         </div>
         <span class="status-badge ${badge.tone}">${escapeHtml(badge.label)}</span>
@@ -312,6 +315,7 @@ export function readTxHash(): Hex {
 }
 
 export function rememberTx(txHash: Hex): void {
+  if (state.currentTxHash && state.currentTxHash !== txHash) invalidateClaimStatus();
   state.currentTxHash = txHash;
   $<HTMLInputElement>("txHash").value = txHash;
   try {
@@ -321,13 +325,21 @@ export function rememberTx(txHash: Hex): void {
   }
 }
 
+export function invalidateClaimStatus(message = "Transaction changed. Click Check status to load its current state."): void {
+  state.currentStatus = null;
+  const claim = document.getElementById("claim") as HTMLButtonElement | null;
+  if (claim) claim.disabled = true;
+  const statusBox = document.getElementById("statusBox");
+  if (statusBox) setStatus(message);
+}
+
 export function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/over rate limit|rate limit|too many requests|\b429\b/i.test(message)) {
     return [
       "The Base RPC is temporarily rate limited. No transaction was submitted and no tokens moved.",
       "Connect your Base wallet and retry so the page can use the wallet RPC.",
-      "For a public deployment, set VITE_BASE_RPC_URLS in Vercel to one or more browser-compatible production Base RPC URLs separated by commas."
+      "For a public deployment, set VITE_BASE_RPC_URL in Vercel to a browser-compatible production Base RPC URL."
     ].join("\n");
   }
   return message;
@@ -408,7 +420,8 @@ function renderStatusSection(title: string, rows: Array<[string, string, boolean
   `;
 }
 
-function getStatusTitle(status: BridgeStatus["status"]): string {
+function getStatusTitle(status: BridgeStatus["status"], bridgePaused = false): string {
+  if (bridgePaused && status !== "claimed") return "Bridge paused";
   switch (status) {
     case "waiting_for_base_tx":
       return "Waiting for Base transaction";
@@ -442,7 +455,7 @@ function getStatusBadge(status: BridgeStatus["status"]): { label: string; tone: 
   }
 }
 
-function getProgressSteps(status: BridgeStatus["status"]): Array<{ label: string; text: string; state: "done" | "current" | "upcoming" }> {
+function getProgressSteps(status: BridgeStatus["status"], bridgePaused = false): Array<{ label: string; text: string; state: "done" | "current" | "upcoming" }> {
   if (status === "waiting_for_root") {
     return [
       { label: "Burn on Base", text: "Complete", state: "done" },
@@ -454,14 +467,14 @@ function getProgressSteps(status: BridgeStatus["status"]): Array<{ label: string
     return [
       { label: "Burn on Base", text: "Complete", state: "done" },
       { label: "Wait for output root", text: "Complete", state: "done" },
-      { label: "Claim on Solana", text: "Ready now", state: "current" }
+      { label: "Claim on Solana", text: bridgePaused ? "Paused" : "Ready now", state: "current" }
     ];
   }
   if (status === "proof_created") {
     return [
       { label: "Burn on Base", text: "Complete", state: "done" },
       { label: "Wait for output root", text: "Complete", state: "done" },
-      { label: "Claim on Solana", text: "Retry relay", state: "current" }
+      { label: "Claim on Solana", text: bridgePaused ? "Paused" : "Retry relay", state: "current" }
     ];
   }
   if (status === "claimed") {

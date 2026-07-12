@@ -10,6 +10,7 @@ import {
   beginBusyAction,
   copyValue,
   invalidateBurnValidation,
+  invalidateClaimStatus,
   renderApp,
   setStatus,
   showError,
@@ -48,6 +49,7 @@ async function init(): Promise<void> {
   });
   $<HTMLInputElement>("localToken").addEventListener("input", () => invalidateBurnValidation());
   $<HTMLInputElement>("amount").addEventListener("input", () => invalidateBurnValidation());
+  $<HTMLInputElement>("txHash").addEventListener("input", () => invalidateClaimStatus());
 
   await restoreBaseConnection();
   restoreSolanaConnection();

@@ -33,7 +33,7 @@ For Token-2022 mints, the page detects the Token-2022 program owner and shows a 
 The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
 
 The Base transaction hash is saved to browser local storage. Users can also paste any prior burn transaction hash manually.
-Status checks and Solana claims do not require a connected Base wallet; configured public Base RPC fallbacks provide the read-only proof data needed for recovery.
+Status checks and Solana claims do not require a connected Base wallet; the configured public Base RPC provides the read-only proof data needed for recovery.
 
 ## Local development
 
@@ -63,8 +63,7 @@ Vercel will build and redeploy the static site whenever `main` is pushed.
 Optional build variables:
 
 - `VITE_BRIDGE_ENV=mainnet` or `testnet`
-- `VITE_BASE_RPC_URLS=<primary URL,backup URL>` recommended
-- `VITE_BASE_RPC_URL=<single browser-compatible Base RPC>` also supported
+- `VITE_BASE_RPC_URL=<browser-compatible Base RPC>`
 - `VITE_SOLANA_RPC_URL=<browser-compatible Solana RPC>`
 
 Anything beginning with `VITE_` is public in the browser bundle. Never put a secret or unrestricted paid RPC key there.
@@ -72,7 +71,7 @@ Anything beginning with `VITE_` is public in the browser bundle. Never put a sec
 This package includes `.env.production` with:
 
 ```bash
-VITE_BASE_RPC_URLS=https://base-rpc.publicnode.com
+VITE_BASE_RPC_URL=https://base-rpc.publicnode.com
 VITE_SOLANA_RPC_URL=https://solana-rpc.publicnode.com
 ```
 
@@ -82,5 +81,5 @@ These endpoints are compiled into the production `dist` bundle. No Vercel runtim
 
 - Base -> Solana is not instant. The user must wait until validators register a sufficiently recent output root on Solana.
 - The user's Solana wallet pays transaction fees and rent for the per-message proof account, and possibly the ATA. Keep a small SOL buffer available; Token-2022 ATAs may need more rent than ordinary SPL accounts.
-- The default Base public RPC is rate limited and not intended for production. The page first tries the connected Base wallet RPC, then configured `VITE_BASE_RPC_URLS` fallbacks. For production, configure at least one browser-compatible provider URL, preferably with domain restrictions.
+- The default Base public RPC is rate limited and not intended for production. The page first tries the connected Base wallet RPC, then the configured `VITE_BASE_RPC_URL`. For production, configure a browser-compatible provider URL, preferably with domain restrictions.
 - The site is intentionally limited to returning official Base-wrapped SPL tokens. It does not support Base-native ERC-20s, ETH, SOL wrappers, arbitrary follow-up instructions, or subsidized relaying.

@@ -5,8 +5,7 @@ import {
   fallback,
   http,
   type Address,
-  type Hex,
-  type Transport
+  type Hex
 } from "viem";
 
 import { CONFIG } from "./config";
@@ -63,6 +62,7 @@ export type BridgeStatus = {
   solanaBaseBlockNumber?: bigint;
   nextEligibleRootBlock?: bigint;
   rootBlocksBehind?: bigint;
+  bridgePaused?: boolean;
   incomingMessage?: PublicKey;
   transfer?: ParsedTransfer;
   displayAmount?: string;
@@ -82,17 +82,13 @@ export const state = {
   actionInFlight: false
 };
 
-function baseRpcTransports(): Transport[] {
-  return CONFIG.baseRpcUrls.map((url) =>
-    http(url, { retryCount: 1, retryDelay: 500, timeout: 15_000 })
-  );
-}
-
 export function getBaseClient() {
-  const transports: Transport[] = baseRpcTransports();
-  if (window.ethereum && state.baseReady) transports.unshift(custom(window.ethereum));
+  const publicRpc = http(CONFIG.baseRpcUrl, { retryCount: 1, retryDelay: 500, timeout: 15_000 });
+  const transport = window.ethereum && state.baseReady
+    ? fallback([custom(window.ethereum), publicRpc], { retryCount: 2, retryDelay: 750 })
+    : publicRpc;
   return createPublicClient({
     chain: CONFIG.baseChain,
-    transport: fallback(transports, { retryCount: 2, retryDelay: 750 })
+    transport
   });
 }

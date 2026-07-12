@@ -12,6 +12,11 @@ export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZb
 export const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 export const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
+// Protocol constants below mirror solana/programs/bridge/src/base_to_solana/
+// instructions/{prove_message,relay_message}.rs and the adjacent state layouts,
+// reviewed at base/bridge commit cf64f80a73128c42e818394bb77c826faf3d2a78.
+// Re-check the official program before changing seeds, offsets, discriminators,
+// account order, or serialized message fields.
 const OUTPUT_ROOT_SEED = Buffer.from("output_root");
 const INCOMING_MESSAGE_SEED = Buffer.from("incoming_message");
 const BRIDGE_SEED = Buffer.from("bridge");

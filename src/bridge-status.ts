@@ -2,7 +2,6 @@ import { decodeEventLog, formatUnits, getAddress, type Address, type Hex } from 
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
 import {
-  assertBridgeActive,
   assertSingleBridgeEventCount,
   isTransactionReceiptPending,
   nextRootBlock,
@@ -54,7 +53,6 @@ export async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
       functionName: "symbol"
     }).catch(() => "")
   ]);
-  assertBridgeActive(bridgeState.paused);
   const displayAmount = `${formatUnits(transfer.amount, mintInfo.decimals)}${tokenSymbol ? ` ${tokenSymbol}` : ""}`;
 
   const incomingMessage = getIncomingMessagePda(CONFIG.solanaBridgeProgram, event.messageHash);
@@ -70,40 +68,68 @@ export async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
     solanaBaseBlockNumber: bridgeState.baseBlockNumber,
     incomingMessage,
     transfer,
-    displayAmount
+    displayAmount,
+    bridgePaused: bridgeState.paused
   } as const;
 
-  if (incomingInfo) {
-    if (readIncomingMessageExecuted(incomingInfo.data, event.message.data)) {
-      return {
-        ...common,
-        status: "claimed",
-        humanStatus: "Claim confirmed on Solana. The incoming bridge message has already executed."
-      };
-    }
+  return classifyAvailableMessage({
+    common,
+    incomingExecuted: incomingInfo
+      ? readIncomingMessageExecuted(incomingInfo.data, event.message.data)
+      : null,
+    latestRootBlock: bridgeState.baseBlockNumber,
+    blockIntervalRequirement: bridgeState.blockIntervalRequirement
+  });
+}
 
+export function classifyAvailableMessage(input: {
+  common: Omit<BridgeStatus, "status" | "humanStatus"> & {
+    baseBlockNumber: bigint;
+    bridgePaused: boolean;
+  };
+  incomingExecuted: boolean | null;
+  latestRootBlock: bigint;
+  blockIntervalRequirement: bigint;
+}): BridgeStatus {
+  const { common, incomingExecuted, latestRootBlock, blockIntervalRequirement } = input;
+
+  if (incomingExecuted === true) {
+    return {
+      ...common,
+      status: "claimed",
+      humanStatus: "Claim confirmed on Solana. The incoming bridge message has already executed."
+    };
+  }
+
+  if (incomingExecuted === false) {
     return {
       ...common,
       status: "proof_created",
-      humanStatus: "The proof account already exists. The Solana relay can be retried."
+      humanStatus: common.bridgePaused
+        ? "The proof account exists, but the bridge is paused. Claiming is temporarily unavailable."
+        : "The proof account already exists. The Solana relay can be retried."
     };
   }
 
-  if (bridgeState.baseBlockNumber >= receipt.blockNumber) {
+  if (latestRootBlock >= common.baseBlockNumber) {
     return {
       ...common,
       status: "ready_to_claim",
-      humanStatus: "Ready to claim on Solana."
+      humanStatus: common.bridgePaused
+        ? "The output root is ready, but the bridge is paused. Claiming is temporarily unavailable."
+        : "Ready to claim on Solana."
     };
   }
 
-  const nextEligibleRootBlock = nextRootBlock(receipt.blockNumber, bridgeState.blockIntervalRequirement);
+  const nextEligibleRootBlock = nextRootBlock(common.baseBlockNumber, blockIntervalRequirement);
   return {
     ...common,
     status: "waiting_for_root",
-    humanStatus: `Waiting for a Solana output root at or after Base block ${receipt.blockNumber}.`,
+    humanStatus: common.bridgePaused
+      ? `The bridge is paused while waiting for an output root at or after Base block ${common.baseBlockNumber}. Status checks remain available.`
+      : `Waiting for a Solana output root at or after Base block ${common.baseBlockNumber}.`,
     nextEligibleRootBlock,
-    rootBlocksBehind: rootBlocksRemaining(receipt.blockNumber, bridgeState.baseBlockNumber, bridgeState.blockIntervalRequirement)
+    rootBlocksBehind: rootBlocksRemaining(common.baseBlockNumber, latestRootBlock, blockIntervalRequirement)
   };
 }
 

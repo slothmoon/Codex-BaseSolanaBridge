@@ -6,19 +6,13 @@ export type AppConfig = {
   baseChain: Chain;
   baseBridge: `0x${string}`;
   baseFactory: `0x${string}`;
-  baseRpcUrls: string[];
+  baseRpcUrl: string;
   solanaRpcUrl: string;
   solanaBridgeProgram: string;
 };
 
-
-function rpcUrls(primary: string, fallbackUrl: string): string[] {
-  const raw = primary.trim();
-  const urls = (raw || fallbackUrl)
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return [...new Set(urls)];
+function rpcUrl(value: string | undefined, fallbackUrl: string): string {
+  return value?.trim() || fallbackUrl;
 }
 
 const ENVIRONMENTS: Record<AppConfig["env"], AppConfig> = {
@@ -28,7 +22,7 @@ const ENVIRONMENTS: Record<AppConfig["env"], AppConfig> = {
     baseChain: base,
     baseBridge: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
     baseFactory: "0xDD56781d0509650f8C2981231B6C917f2d5d7dF2",
-    baseRpcUrls: rpcUrls(import.meta.env.VITE_BASE_RPC_URLS || import.meta.env.VITE_BASE_RPC_URL || "", "https://mainnet.base.org"),
+    baseRpcUrl: rpcUrl(import.meta.env.VITE_BASE_RPC_URL, "https://mainnet.base.org"),
     solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
     solanaBridgeProgram: "HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM"
   },
@@ -38,7 +32,7 @@ const ENVIRONMENTS: Record<AppConfig["env"], AppConfig> = {
     baseChain: baseSepolia,
     baseBridge: "0x01824a90d32A69022DdAEcC6C5C14Ed08dB4EB9B",
     baseFactory: "0x488EB7F7cb2568e31595D48cb26F63963Cc7565D",
-    baseRpcUrls: rpcUrls(import.meta.env.VITE_BASE_RPC_URLS || import.meta.env.VITE_BASE_RPC_URL || "", "https://sepolia.base.org"),
+    baseRpcUrl: rpcUrl(import.meta.env.VITE_BASE_RPC_URL, "https://sepolia.base.org"),
     solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com",
     solanaBridgeProgram: "7c6mteAcTXaQ1MFBCrnuzoZVTTAEfZwa6wgy4bqX3KXC"
   }
