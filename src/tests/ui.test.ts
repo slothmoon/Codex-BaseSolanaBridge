@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { state } from "../shared";
-import { beginBusyAction, invalidateBurnValidation, invalidateClaimStatus, readTxHash, rememberTx } from "../ui";
+import { beginBusyAction, invalidateBurnValidation, invalidateClaimStatus, readTxHash, rememberTx, syncBaseActionButtons } from "../ui";
 
 const hashA = `0x${"aa".repeat(32)}` as const;
 const hashB = `0x${"bb".repeat(32)}` as const;
@@ -23,6 +23,7 @@ afterEach(() => {
   state.currentStatus = null;
   state.currentTxHash = "";
   state.validatedBurnKey = "";
+  state.actionInFlight = false;
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: originalDocument
@@ -100,6 +101,29 @@ describe("action locking", () => {
     expect(activeButton.disabled).toBe(false);
     expect(input.disabled).toBe(false);
     expect(activeButton.textContent).toBe("Check status");
+  });
+
+  it("keeps claim disabled when status becomes ready during an active action", () => {
+    const claim = { disabled: false } as HTMLButtonElement;
+    const checkStatus = { disabled: false } as HTMLButtonElement;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        querySelectorAll: () => [claim, checkStatus],
+        getElementById: (id: string) => id === "claim" ? claim : id === "checkStatus" ? checkStatus : null
+      }
+    });
+    state.currentStatus = {
+      status: "ready_to_claim",
+      humanStatus: "Ready",
+      txHash: hashA
+    };
+    state.actionInFlight = true;
+
+    syncBaseActionButtons();
+
+    expect(claim.disabled).toBe(true);
+    expect(checkStatus.disabled).toBe(true);
   });
 });
 

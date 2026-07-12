@@ -108,6 +108,13 @@ export function invalidateBurnValidation(): void {
 }
 
 export function syncBaseActionButtons(): void {
+  if (state.actionInFlight) {
+    for (const button of document.querySelectorAll<HTMLButtonElement>("button")) {
+      button.disabled = true;
+    }
+    return;
+  }
+
   const baseReady = Boolean(state.evmAccount && state.baseReady);
   const claimReady = !state.currentStatus?.bridgePaused
     && (state.currentStatus?.status === "ready_to_claim" || state.currentStatus?.status === "proof_created");
@@ -213,9 +220,6 @@ function renderToken2022Warning(details: ReturnDetails): string {
 }
 
 export function renderStatus(status: BridgeStatus): void {
-  const claim = $<HTMLButtonElement>("claim");
-  claim.disabled = Boolean(status.bridgePaused) || (status.status !== "ready_to_claim" && status.status !== "proof_created");
-
   const badge = status.bridgePaused && status.status !== "claimed"
     ? { label: "Paused", tone: "warning" }
     : getStatusBadge(status.status);
