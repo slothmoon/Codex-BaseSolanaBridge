@@ -7,11 +7,10 @@ import {
   $,
   beginBusyAction,
   copyValue,
+  initializeRecoveryTx,
   invalidateBurnValidation,
   invalidateClaimStatus,
-  rememberTx,
   renderApp,
-  selectInitialTxHash,
   setStatus,
   showError,
   type BusyAction
@@ -58,9 +57,8 @@ async function init(): Promise<void> {
 
   const queryTx = new URLSearchParams(location.search).get("tx");
   const savedTx = readSavedTx();
-  const txHash = selectInitialTxHash(queryTx, savedTx);
+  const txHash = initializeRecoveryTx(queryTx, savedTx);
   if (txHash) {
-    rememberTx(txHash);
     setStatus("Saved Base transaction loaded. Click Check status.");
   }
   if (queryTx) cleanTxQueryParam();

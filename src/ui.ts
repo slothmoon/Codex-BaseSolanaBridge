@@ -330,6 +330,12 @@ export function selectInitialTxHash(queryTx: string | null, savedTx: string): He
   return isHash(savedTx) ? savedTx : "";
 }
 
+export function initializeRecoveryTx(queryTx: string | null, savedTx: string): Hex | "" {
+  const txHash = selectInitialTxHash(queryTx, savedTx);
+  if (txHash) rememberTx(txHash);
+  return txHash;
+}
+
 export function rememberTx(txHash: Hex): void {
   if (state.currentTxHash && state.currentTxHash !== txHash) invalidateClaimStatus();
   state.currentTxHash = txHash;

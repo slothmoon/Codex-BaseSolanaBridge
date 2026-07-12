@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { state } from "../shared";
 import {
   beginBusyAction,
+  initializeRecoveryTx,
   invalidateBurnValidation,
   invalidateClaimStatus,
   readTxHash,
@@ -50,7 +51,7 @@ describe("claim status invalidation", () => {
     expect(selectInitialTxHash(null, "invalid")).toBe("");
   });
 
-  it("persists a recovery hash before the URL can be cleaned", () => {
+  it("initializes and persists a recovery hash before the URL can be cleaned", () => {
     const { txInput } = installDocument();
     const setItem = vi.fn();
     Object.defineProperty(globalThis, "localStorage", {
@@ -58,7 +59,7 @@ describe("claim status invalidation", () => {
       value: { setItem }
     });
 
-    rememberTx(hashB);
+    expect(initializeRecoveryTx(hashB, hashA)).toBe(hashB);
 
     expect(setItem).toHaveBeenCalledWith("base-solana-bridge:last-base-tx", hashB);
     expect(txInput.value).toBe(hashB);

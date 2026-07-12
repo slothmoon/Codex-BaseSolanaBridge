@@ -6,6 +6,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  buildClaimTransaction,
   buildRelayOnlyTransaction,
   createRelayInstruction,
   deriveAta,
@@ -212,6 +213,55 @@ describe("Solana confirmation", () => {
     expect(result.transaction.instructions).toHaveLength(2);
     expect(result.transaction.instructions[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
     expect(result.transaction.instructions[1].data.toString("hex")).toBe("bb5ab68a33f8af62");
+  });
+
+  it("builds the complete ATA, proof, and relay transaction", async () => {
+    const payer = key(0xd1);
+    const mint = key(0xd2);
+    const destination = deriveAta(payer, mint, TOKEN_PROGRAM_ID);
+    const bytes = Buffer.alloc(98);
+    bytes[0] = 1;
+    bytes[1] = 1;
+    Buffer.alloc(20, 0xd3).copy(bytes, 2);
+    mint.toBuffer().copy(bytes, 22);
+    destination.toBuffer().copy(bytes, 54);
+    bytes.writeBigUInt64LE(5n, 86);
+
+    const mintData = Buffer.alloc(82);
+    mintData[44] = 6;
+    const connection = {
+      getAccountInfo: async () => accountInfo(mintData, TOKEN_PROGRAM_ID),
+      getLatestBlockhash: async () => ({
+        blockhash: key(0xd4).toBase58(),
+        lastValidBlockHeight: 999
+      })
+    } as unknown as Connection;
+
+    const result = await buildClaimTransaction({
+      connection,
+      programId: key(0xd5).toBase58(),
+      payer,
+      outputRoot: key(0xd6),
+      incomingMessage: key(0xd7),
+      bridge: key(0xd8),
+      nonce: 5n,
+      sender: `0x${"d9".repeat(20)}`,
+      data: `0x${bytes.toString("hex")}`,
+      proof: [`0x${"da".repeat(32)}`],
+      messageHash: `0x${"db".repeat(32)}`
+    });
+
+    expect(result.transaction.instructions).toHaveLength(3);
+    expect(result.transaction.instructions[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+    expect(result.transaction.instructions[1].data.subarray(0, 8).toString("hex")).toBe("ac424e889ebb2f73");
+    expect(result.transaction.instructions[1].keys.map(({ pubkey }) => pubkey.toBase58())).toEqual([
+      payer,
+      key(0xd6),
+      key(0xd7),
+      key(0xd8),
+      PublicKey.default
+    ].map((value) => value.toBase58()));
+    expect(result.transaction.instructions[2].data.toString("hex")).toBe("bb5ab68a33f8af62");
   });
 
   it("explains the ATA-only recovery scope for another destination", async () => {
