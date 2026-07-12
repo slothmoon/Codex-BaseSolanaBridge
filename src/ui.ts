@@ -132,12 +132,15 @@ export function syncBaseActionButtons(): void {
 export function beginBusyAction(action: BusyAction): () => void {
   const shell = document.querySelector<HTMLElement>(".shell");
   const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-  const snapshots = buttons.map((button) => ({ button, disabled: button.disabled }));
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("input"));
+  const buttonSnapshots = buttons.map((button) => ({ button, disabled: button.disabled }));
+  const inputSnapshots = inputs.map((input) => ({ input, disabled: input.disabled }));
   const activeButton = document.getElementById(action.buttonId) as HTMLButtonElement | null;
   const originalLabel = activeButton?.textContent || "";
 
   shell?.setAttribute("aria-busy", "true");
   for (const button of buttons) button.disabled = true;
+  for (const input of inputs) input.disabled = true;
   if (activeButton) {
     activeButton.textContent = action.label;
     activeButton.classList.add("is-busy");
@@ -145,7 +148,8 @@ export function beginBusyAction(action: BusyAction): () => void {
 
   return () => {
     shell?.removeAttribute("aria-busy");
-    for (const { button, disabled } of snapshots) button.disabled = disabled;
+    for (const { button, disabled } of buttonSnapshots) button.disabled = disabled;
+    for (const { input, disabled } of inputSnapshots) input.disabled = disabled;
     if (activeButton) {
       activeButton.textContent = originalLabel;
       activeButton.classList.remove("is-busy");
@@ -308,7 +312,7 @@ export function renderCopyValue(value: string): string {
 }
 
 export function readTxHash(): Hex {
-  const value = ($<HTMLInputElement>("txHash").value.trim() || state.currentTxHash) as string;
+  const value = $<HTMLInputElement>("txHash").value.trim();
   if (!isHash(value)) throw new Error("Paste a valid 0x-prefixed Base transaction hash.");
   rememberTx(value);
   return value;
@@ -326,11 +330,15 @@ export function rememberTx(txHash: Hex): void {
 }
 
 export function invalidateClaimStatus(message = "Transaction changed. Click Check status to load its current state."): void {
+  clearClaimReadiness();
+  const statusBox = document.getElementById("statusBox");
+  if (statusBox) setStatus(message);
+}
+
+function clearClaimReadiness(): void {
   state.currentStatus = null;
   const claim = document.getElementById("claim") as HTMLButtonElement | null;
   if (claim) claim.disabled = true;
-  const statusBox = document.getElementById("statusBox");
-  if (statusBox) setStatus(message);
 }
 
 export function errorMessage(error: unknown): string {

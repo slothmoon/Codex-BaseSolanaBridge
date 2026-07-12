@@ -208,6 +208,8 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
     ));
   }
 
+  applyConfirmationToClaimState(result.confirmation);
+
   if (result.confirmation.status === "unknown") {
     setLinkedStatus(
       `Claim broadcast on Solana, but confirmation could not be verified:\n${result.signature}\n\nDo not burn again. Click Check status before retrying the claim.`,
@@ -223,6 +225,18 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
     "View on Solana Explorer",
     explorerUrl
   );
+}
+
+export function applyConfirmationToClaimState(confirmation: SolanaConfirmationOutcome): void {
+  if (confirmation.status === "confirmed" && state.currentStatus) {
+    state.currentStatus = {
+      ...state.currentStatus,
+      status: "claimed",
+      humanStatus: "Claim confirmed on Solana."
+    };
+  } else if (confirmation.status === "unknown") {
+    state.currentStatus = null;
+  }
 }
 
 async function assertEnoughSol(

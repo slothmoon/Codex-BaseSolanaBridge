@@ -100,6 +100,9 @@ export async function startBridge(): Promise<void> {
     value: 0n
   });
 
+  // A submitted burn consumes this validation. Any additional burn must be
+  // reviewed and validated again to avoid accidental duplicate submissions.
+  invalidateBurnValidation();
   rememberTx(txHash);
   const baseExplorer = CONFIG.baseChain.blockExplorers?.default.url || "https://basescan.org";
   setLinkedStatus(

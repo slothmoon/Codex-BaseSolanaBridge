@@ -1,8 +1,8 @@
 import { Keypair, Transaction, type Connection } from "@solana/web3.js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { confirmSolanaTransaction, sendSolanaTransaction } from "./claim";
-import type { SolanaProvider } from "./shared";
+import { applyConfirmationToClaimState, confirmSolanaTransaction, sendSolanaTransaction } from "./claim";
+import { state, type SolanaProvider } from "./shared";
 
 function claimTransaction() {
   const payer = Keypair.generate();
@@ -13,6 +13,48 @@ function claimTransaction() {
   });
   return { payer, transaction };
 }
+
+afterEach(() => {
+  state.currentStatus = null;
+});
+
+describe("post-submission claim state", () => {
+  it("marks a confirmed claim as completed", () => {
+    state.currentStatus = {
+      status: "ready_to_claim",
+      humanStatus: "Ready",
+      txHash: `0x${"11".repeat(32)}`
+    };
+
+    applyConfirmationToClaimState({ status: "confirmed" });
+
+    expect(state.currentStatus?.status).toBe("claimed");
+  });
+
+  it("requires a fresh status check when confirmation is unknown", () => {
+    state.currentStatus = {
+      status: "proof_created",
+      humanStatus: "Ready to relay",
+      txHash: `0x${"22".repeat(32)}`
+    };
+
+    applyConfirmationToClaimState({ status: "unknown", error: new Error("timeout") });
+
+    expect(state.currentStatus).toBeNull();
+  });
+
+  it("keeps a failed claim retryable", () => {
+    state.currentStatus = {
+      status: "ready_to_claim",
+      humanStatus: "Ready",
+      txHash: `0x${"33".repeat(32)}`
+    };
+
+    applyConfirmationToClaimState({ status: "failed", reason: "failure" });
+
+    expect(state.currentStatus?.status).toBe("ready_to_claim");
+  });
+});
 
 describe("Solana confirmation outcomes", () => {
   it("reports a successful confirmation", async () => {

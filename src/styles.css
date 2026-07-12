@@ -124,6 +124,7 @@ input {
 input::placeholder { color: #667287; }
 input:hover { border-color: #53627a; }
 input:focus { border-color: #4d83ff; box-shadow: 0 0 0 3px rgba(44, 105, 255, .18); }
+input:disabled { cursor: wait; opacity: .72; }
 
 .walletButtons { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 2px; }
 .walletHints { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; margin: 7px 2px 14px; }
