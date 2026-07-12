@@ -134,6 +134,9 @@ export function syncBaseActionButtons(): void {
   }
   if (checkButton) checkButton.disabled = false;
   if (claimButton) claimButton.disabled = !claimReady;
+  for (const copyButton of document.querySelectorAll<HTMLButtonElement>(".copy-chip")) {
+    copyButton.disabled = false;
+  }
 }
 
 export function beginBusyAction(action: BusyAction): () => void {

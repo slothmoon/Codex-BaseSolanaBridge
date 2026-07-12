@@ -125,6 +125,21 @@ describe("action locking", () => {
     expect(claim.disabled).toBe(true);
     expect(checkStatus.disabled).toBe(true);
   });
+
+  it("enables copy buttons created while an action was running", () => {
+    const copyButton = { disabled: true } as HTMLButtonElement;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        querySelectorAll: (selector: string) => selector === ".copy-chip" ? [copyButton] : [],
+        getElementById: () => null
+      }
+    });
+
+    syncBaseActionButtons();
+
+    expect(copyButton.disabled).toBe(false);
+  });
 });
 
 describe("burn validation consumption", () => {
