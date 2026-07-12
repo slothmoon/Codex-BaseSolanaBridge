@@ -1,4 +1,3 @@
-import { PublicKey, Transaction } from "@solana/web3.js";
 import { decodeEventLog, formatUnits, getAddress, type Address, type Hex } from "viem";
 
 import { BRIDGE_ABI, CONFIG, ERC20_ABI } from "./config";
@@ -10,32 +9,15 @@ import {
   rootBlocksRemaining
 } from "./bridge-logic";
 import {
-  buildClaimTransaction,
-  buildRelayOnlyTransaction,
-  getBlockheightConfirmationStrategy,
   getIncomingMessagePda,
   getOutputRootPda,
   getSolanaBridgeState,
-  incomingMessageAccountSpace,
   parseBaseToSolanaTransfer,
   readIncomingMessageExecuted,
-  readMintInfo,
-  type ParsedTransfer
+  readMintInfo
 } from "./solana";
-import { getBaseClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
-import {
-  errorMessage,
-  formatSolanaError,
-  formatSolanaFailure,
-  lamportsToSol,
-  readTxHash,
-  renderStatus,
-  setLinkedStatus,
-  setStatus
-} from "./ui";
-import { connectSolana, getSolanaProvider } from "./wallets";
-
-const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
+import { getBaseClient, solana, state, type BridgeStatus } from "./shared";
+import { readTxHash, renderStatus, setStatus } from "./ui";
 
 export async function checkStatus(): Promise<void> {
   const txHash = readTxHash();
@@ -45,96 +27,7 @@ export async function checkStatus(): Promise<void> {
   renderStatus(status);
 }
 
-export async function claimOnSolana(): Promise<void> {
-  const baseClient = getBaseClient();
-  if (!state.solanaAccount) await connectSolana();
-  const provider = getSolanaProvider();
-  if (!provider) throw new Error("Solana wallet disconnected.");
-
-  const txHash = readTxHash();
-  setStatus("Refreshing bridge status...");
-  const status = await refreshStatus(txHash);
-  state.currentStatus = status;
-  renderStatus(status);
-  if (status.status !== "ready_to_claim" && status.status !== "proof_created") {
-    throw new Error(status.humanStatus);
-  }
-  if (!status.messageData || !status.messageHash || status.messageNonce === undefined || !status.sender || !status.incomingMessage) {
-    throw new Error("The bridge message is incomplete.");
-  }
-
-  const payer = new PublicKey(state.solanaAccount);
-  const bridgeState = await getSolanaBridgeState(solana, CONFIG.solanaBridgeProgram);
-  const incomingInfo = await solana.getAccountInfo(status.incomingMessage, "confirmed");
-
-  setStatus("Building the Solana claim transaction in your browser...");
-  let transaction: Transaction;
-  let transfer: ParsedTransfer;
-
-  if (incomingInfo) {
-    ({ transaction, transfer } = await buildRelayOnlyTransaction({
-      connection: solana,
-      programId: CONFIG.solanaBridgeProgram,
-      payer,
-      incomingMessage: status.incomingMessage,
-      bridge: bridgeState.bridge,
-      data: status.messageData
-    }));
-  } else {
-    const outputRoot = getOutputRootPda(CONFIG.solanaBridgeProgram, bridgeState.baseBlockNumber);
-    let proof: readonly Hex[];
-    try {
-      proof = await baseClient.readContract({
-        address: CONFIG.baseBridge,
-        abi: BRIDGE_ABI,
-        functionName: "generateProof",
-        args: [status.messageNonce],
-        blockNumber: bridgeState.baseBlockNumber
-      });
-    } catch (error) {
-      throw new Error(`Could not generate the historical Base proof. The configured Base RPC may not support historical eth_call. ${errorMessage(error)}`);
-    }
-
-    ({ transaction, transfer } = await buildClaimTransaction({
-      connection: solana,
-      programId: CONFIG.solanaBridgeProgram,
-      payer,
-      outputRoot,
-      incomingMessage: status.incomingMessage,
-      bridge: bridgeState.bridge,
-      nonce: status.messageNonce,
-      sender: status.sender,
-      data: status.messageData,
-      proof,
-      messageHash: status.messageHash
-    }));
-  }
-
-  await assertEnoughSol(transaction, payer, status, transfer);
-  setStatus("Simulating the complete Solana claim before asking for a signature...");
-  let simulation;
-  try {
-    // Legacy Transaction uses the legacy simulateTransaction overload. Passing a
-    // VersionedTransaction config object here causes web3.js to throw "Invalid arguments".
-    simulation = await solana.simulateTransaction(transaction);
-  } catch (error) {
-    throw new Error(await formatSolanaError("Could not simulate the Solana claim", error, solana));
-  }
-  if (simulation.value.err) {
-    throw new Error(formatSolanaFailure("Solana simulation failed", simulation.value.err, simulation.value.logs));
-  }
-
-  setStatus("Simulation passed. Confirm the Solana claim in your wallet.");
-  const signature = await sendSolanaTransaction(provider, transaction);
-  const cluster = CONFIG.env === "testnet" ? "?cluster=devnet" : "";
-  setLinkedStatus(
-    `Claim submitted on Solana:\n${signature}\n\nThe transaction has been broadcast.`,
-    "View on Solana Explorer",
-    `https://explorer.solana.com/tx/${signature}${cluster}`
-  );
-}
-
-async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
+export async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
   const baseClient = getBaseClient();
   let receipt;
   try {
@@ -212,75 +105,6 @@ async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
     nextEligibleRootBlock,
     rootBlocksBehind: rootBlocksRemaining(receipt.blockNumber, bridgeState.baseBlockNumber, bridgeState.blockIntervalRequirement)
   };
-}
-
-async function assertEnoughSol(
-  transaction: Transaction,
-  payer: PublicKey,
-  status: BridgeStatus,
-  transfer: ParsedTransfer
-): Promise<void> {
-  const [balance, feeResult, ataInfo] = await Promise.all([
-    solana.getBalance(payer, "confirmed"),
-    solana.getFeeForMessage(transaction.compileMessage(), "confirmed"),
-    solana.getAccountInfo(transfer.toTokenAccount, "confirmed")
-  ]);
-
-  let required = BigInt(feeResult.value ?? 5_000);
-  if (status.status === "ready_to_claim" && status.messageData) {
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(incomingMessageAccountSpace(status.messageData), "confirmed"));
-  }
-  if (!ataInfo) {
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(165, "confirmed"));
-  }
-  required += CLAIM_SOL_BUFFER_LAMPORTS;
-
-  if (BigInt(balance) < required) {
-    throw new Error(
-      `Your Solana wallet has ${lamportsToSol(BigInt(balance))} SOL, but this claim is estimated to need about ${lamportsToSol(required)} SOL for account rent and fees. Add SOL, then retry the same Base transaction hash.`
-    );
-  }
-}
-
-async function sendSolanaTransaction(provider: SolanaProvider, transaction: Transaction): Promise<string> {
-  if (provider.signTransaction) {
-    let signed: Transaction;
-    try {
-      signed = (await provider.signTransaction(transaction)) || transaction;
-    } catch (error) {
-      throw new Error(await formatSolanaError("Solana wallet signing failed", error, solana));
-    }
-    const feePayer = signed.feePayer;
-    const payerSignature = feePayer
-      ? signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature
-      : null;
-    if (!payerSignature) {
-      throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
-    }
-
-    try {
-      const signature = await solana.sendRawTransaction(signed.serialize(), {
-        preflightCommitment: "confirmed",
-        skipPreflight: false
-      });
-      await solana.confirmTransaction(getBlockheightConfirmationStrategy(transaction, signature), "confirmed");
-      return signature;
-    } catch (error) {
-      throw new Error(await formatSolanaError("Solana broadcast failed", error, solana));
-    }
-  }
-
-  if (provider.signAndSendTransaction) {
-    try {
-      const { signature } = await provider.signAndSendTransaction(transaction);
-      await solana.confirmTransaction(getBlockheightConfirmationStrategy(transaction, signature), "confirmed");
-      return signature;
-    } catch (error) {
-      throw new Error(await formatSolanaError("Solana wallet send failed", error, solana));
-    }
-  }
-
-  throw new Error("This Solana wallet does not support transaction signing from websites.");
 }
 
 function findMessageInitiated(receipt: { logs: readonly { address: Address; topics: readonly Hex[]; data: Hex }[] }): {

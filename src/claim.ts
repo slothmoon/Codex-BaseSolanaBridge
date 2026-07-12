@@ -1,0 +1,253 @@
+import { PublicKey, Transaction, type Connection } from "@solana/web3.js";
+import { type Hex } from "viem";
+
+import { refreshStatus } from "./bridge-status";
+import { BRIDGE_ABI, CONFIG } from "./config";
+import {
+  buildClaimTransaction,
+  buildRelayOnlyTransaction,
+  getBlockheightConfirmationStrategy,
+  getOutputRootPda,
+  getSolanaBridgeState,
+  incomingMessageAccountSpace,
+  type ParsedTransfer
+} from "./solana";
+import { getBaseClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
+import {
+  errorMessage,
+  formatSolanaError,
+  formatSolanaFailure,
+  lamportsToSol,
+  readTxHash,
+  renderStatus,
+  setLinkedStatus,
+  setStatus
+} from "./ui";
+import { connectSolana, getSolanaProvider } from "./wallets";
+
+const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
+
+export type SolanaConfirmationOutcome =
+  | { status: "confirmed" }
+  | { status: "failed"; reason: unknown; logs?: string[] | null }
+  | { status: "unknown"; error: unknown };
+
+export type SolanaSubmissionResult = {
+  signature: string;
+  confirmation: SolanaConfirmationOutcome;
+};
+
+export async function claimOnSolana(): Promise<void> {
+  const baseClient = getBaseClient();
+  if (!state.solanaAccount) await connectSolana();
+  const provider = getSolanaProvider();
+  if (!provider) throw new Error("Solana wallet disconnected.");
+
+  const txHash = readTxHash();
+  setStatus("Refreshing bridge status...");
+  const status = await refreshStatus(txHash);
+  state.currentStatus = status;
+  renderStatus(status);
+  if (status.status !== "ready_to_claim" && status.status !== "proof_created") {
+    throw new Error(status.humanStatus);
+  }
+  if (!status.messageData || !status.messageHash || status.messageNonce === undefined || !status.sender || !status.incomingMessage) {
+    throw new Error("The bridge message is incomplete.");
+  }
+
+  const payer = new PublicKey(state.solanaAccount);
+  const bridgeState = await getSolanaBridgeState(solana, CONFIG.solanaBridgeProgram);
+  const incomingInfo = await solana.getAccountInfo(status.incomingMessage, "confirmed");
+
+  setStatus("Building the Solana claim transaction in your browser...");
+  let transaction: Transaction;
+  let transfer: ParsedTransfer;
+
+  if (incomingInfo) {
+    ({ transaction, transfer } = await buildRelayOnlyTransaction({
+      connection: solana,
+      programId: CONFIG.solanaBridgeProgram,
+      payer,
+      incomingMessage: status.incomingMessage,
+      bridge: bridgeState.bridge,
+      data: status.messageData
+    }));
+  } else {
+    const outputRoot = getOutputRootPda(CONFIG.solanaBridgeProgram, bridgeState.baseBlockNumber);
+    let proof: readonly Hex[];
+    try {
+      proof = await baseClient.readContract({
+        address: CONFIG.baseBridge,
+        abi: BRIDGE_ABI,
+        functionName: "generateProof",
+        args: [status.messageNonce],
+        blockNumber: bridgeState.baseBlockNumber
+      });
+    } catch (error) {
+      throw new Error(`Could not generate the historical Base proof. The configured Base RPC may not support historical eth_call. ${errorMessage(error)}`);
+    }
+
+    ({ transaction, transfer } = await buildClaimTransaction({
+      connection: solana,
+      programId: CONFIG.solanaBridgeProgram,
+      payer,
+      outputRoot,
+      incomingMessage: status.incomingMessage,
+      bridge: bridgeState.bridge,
+      nonce: status.messageNonce,
+      sender: status.sender,
+      data: status.messageData,
+      proof,
+      messageHash: status.messageHash
+    }));
+  }
+
+  await assertEnoughSol(transaction, payer, status, transfer);
+  setStatus("Simulating the complete Solana claim before asking for a signature...");
+  let simulation;
+  try {
+    simulation = await solana.simulateTransaction(transaction);
+  } catch (error) {
+    throw new Error(await formatSolanaError("Could not simulate the Solana claim", error, solana));
+  }
+  if (simulation.value.err) {
+    throw new Error(formatSolanaFailure("Solana simulation failed", simulation.value.err, simulation.value.logs));
+  }
+
+  setStatus("Simulation passed. Confirm the Solana claim in your wallet.");
+  const submission = await sendSolanaTransaction(provider, transaction, solana);
+  renderSubmissionResult(submission);
+}
+
+export async function confirmSolanaTransaction(
+  connection: Connection,
+  transaction: Transaction,
+  signature: string
+): Promise<SolanaConfirmationOutcome> {
+  try {
+    const confirmation = await connection.confirmTransaction(
+      getBlockheightConfirmationStrategy(transaction, signature),
+      "confirmed"
+    );
+    if (!confirmation.value.err) return { status: "confirmed" };
+
+    let logs: string[] | null | undefined;
+    try {
+      const result = await connection.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      logs = result?.meta?.logMessages;
+    } catch {
+      // The confirmation result is authoritative even if log retrieval fails.
+    }
+    return { status: "failed", reason: confirmation.value.err, logs };
+  } catch (error) {
+    return { status: "unknown", error };
+  }
+}
+
+export async function sendSolanaTransaction(
+  provider: SolanaProvider,
+  transaction: Transaction,
+  connection: Connection
+): Promise<SolanaSubmissionResult> {
+  let signature: string;
+
+  if (provider.signTransaction) {
+    let signed: Transaction;
+    try {
+      signed = (await provider.signTransaction(transaction)) || transaction;
+    } catch (error) {
+      throw new Error(await formatSolanaError("Solana wallet signing failed", error, connection));
+    }
+    const feePayer = signed.feePayer;
+    const payerSignature = feePayer
+      ? signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature
+      : null;
+    if (!payerSignature) {
+      throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
+    }
+
+    try {
+      signature = await connection.sendRawTransaction(signed.serialize(), {
+        preflightCommitment: "confirmed",
+        skipPreflight: false
+      });
+    } catch (error) {
+      throw new Error(await formatSolanaError("Solana broadcast failed", error, connection));
+    }
+  } else if (provider.signAndSendTransaction) {
+    try {
+      ({ signature } = await provider.signAndSendTransaction(transaction));
+    } catch (error) {
+      throw new Error(await formatSolanaError("Solana wallet send failed", error, connection));
+    }
+  } else {
+    throw new Error("This Solana wallet does not support transaction signing from websites.");
+  }
+
+  return {
+    signature,
+    confirmation: await confirmSolanaTransaction(connection, transaction, signature)
+  };
+}
+
+function renderSubmissionResult(result: SolanaSubmissionResult): void {
+  const cluster = CONFIG.env === "testnet" ? "?cluster=devnet" : "";
+  const explorerUrl = `https://explorer.solana.com/tx/${result.signature}${cluster}`;
+
+  if (result.confirmation.status === "failed") {
+    throw new Error(formatSolanaFailure(
+      "Solana claim failed on-chain. Retry the same Base transaction hash; do not burn again",
+      result.confirmation.reason,
+      result.confirmation.logs
+    ));
+  }
+
+  if (result.confirmation.status === "unknown") {
+    setLinkedStatus(
+      `Claim broadcast on Solana, but confirmation could not be verified:\n${result.signature}\n\nDo not burn again. Click Check status before retrying the claim.`,
+      "View on Solana Explorer",
+      explorerUrl,
+      "info"
+    );
+    return;
+  }
+
+  setLinkedStatus(
+    `Claim confirmed on Solana:\n${result.signature}`,
+    "View on Solana Explorer",
+    explorerUrl
+  );
+}
+
+async function assertEnoughSol(
+  transaction: Transaction,
+  payer: PublicKey,
+  status: BridgeStatus,
+  transfer: ParsedTransfer
+): Promise<void> {
+  const [balance, feeResult, ataInfo] = await Promise.all([
+    solana.getBalance(payer, "confirmed"),
+    solana.getFeeForMessage(transaction.compileMessage(), "confirmed"),
+    solana.getAccountInfo(transfer.toTokenAccount, "confirmed")
+  ]);
+
+  let required = BigInt(feeResult.value ?? 5_000);
+  if (status.status === "ready_to_claim" && status.messageData) {
+    required += BigInt(await solana.getMinimumBalanceForRentExemption(incomingMessageAccountSpace(status.messageData), "confirmed"));
+  }
+  if (!ataInfo) {
+    // This is a conservative preliminary estimate for a standard token account.
+    // Complete simulation remains authoritative, especially for Token-2022 accounts.
+    required += BigInt(await solana.getMinimumBalanceForRentExemption(165, "confirmed"));
+  }
+  required += CLAIM_SOL_BUFFER_LAMPORTS;
+
+  if (BigInt(balance) < required) {
+    throw new Error(
+      `Your Solana wallet has ${lamportsToSol(BigInt(balance))} SOL, but this claim is estimated to need about ${lamportsToSol(required)} SOL for account rent and fees. Add SOL, then retry the same Base transaction hash.`
+    );
+  }
+}

@@ -3,7 +3,10 @@ import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  buildRelayOnlyTransaction,
   createRelayInstruction,
   deriveAta,
   encodeProveMessage,
@@ -158,5 +161,42 @@ describe("Solana confirmation", () => {
       blockhash: key(0xa2).toBase58(),
       lastValidBlockHeight: 1234
     });
+  });
+
+  it("builds an ATA plus relay when a proof account already exists", async () => {
+    const payer = key(0xb1);
+    const mint = key(0xb2);
+    const destination = deriveAta(payer, mint, TOKEN_PROGRAM_ID);
+    const bytes = Buffer.alloc(98);
+    bytes[0] = 1;
+    bytes[1] = 1;
+    Buffer.alloc(20, 0xb3).copy(bytes, 2);
+    mint.toBuffer().copy(bytes, 22);
+    destination.toBuffer().copy(bytes, 54);
+    bytes.writeBigUInt64LE(5n, 86);
+    bytes.writeUInt32LE(0, 94);
+
+    const mintData = Buffer.alloc(82);
+    mintData[44] = 6;
+    const connection = {
+      getAccountInfo: async () => accountInfo(mintData, TOKEN_PROGRAM_ID),
+      getLatestBlockhash: async () => ({
+        blockhash: key(0xb4).toBase58(),
+        lastValidBlockHeight: 999
+      })
+    } as unknown as Connection;
+
+    const result = await buildRelayOnlyTransaction({
+      connection,
+      programId: key(0xb5).toBase58(),
+      payer,
+      incomingMessage: key(0xb6),
+      bridge: key(0xb7),
+      data: `0x${bytes.toString("hex")}`
+    });
+
+    expect(result.transaction.instructions).toHaveLength(2);
+    expect(result.transaction.instructions[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+    expect(result.transaction.instructions[1].data.toString("hex")).toBe("bb5ab68a33f8af62");
   });
 });

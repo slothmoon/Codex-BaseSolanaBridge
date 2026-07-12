@@ -2,7 +2,8 @@ import { Buffer } from "buffer";
 import { isHash } from "viem";
 
 import { previewReturn, startBridge } from "./burn";
-import { checkStatus, claimOnSolana } from "./bridge-status";
+import { checkStatus } from "./bridge-status";
+import { claimOnSolana } from "./claim";
 import { STORAGE_KEY, state } from "./shared";
 import {
   $,

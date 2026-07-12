@@ -247,9 +247,14 @@ export function setStatus(message: string, tone: "info" | "success" | "error" = 
   `;
 }
 
-export function setLinkedStatus(message: string, linkLabel: string, href: string): void {
+export function setLinkedStatus(
+  message: string,
+  linkLabel: string,
+  href: string,
+  tone: "info" | "success" = "success"
+): void {
   $("statusBox").innerHTML = `
-    <div class="status-message success">
+    <div class="status-message ${tone}">
       ${escapeHtml(message).replace(/\n/g, "<br>")}
       <a class="explorer-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(linkLabel)} &rarr;</a>
     </div>
