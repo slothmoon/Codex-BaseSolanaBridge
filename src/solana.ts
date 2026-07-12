@@ -226,7 +226,7 @@ function assertRecipientWallet(payer: PublicKey, transfer: ParsedTransfer, token
   const expectedAta = deriveAta(payer, transfer.localMint, tokenProgram);
   if (!expectedAta.equals(transfer.toTokenAccount)) {
     throw new Error(
-      `Connect the Solana wallet that owns the destination token account ${transfer.toTokenAccount.toBase58()}.`
+      `This simple interface only claims transfers sent to the connected wallet's associated token account. This burn targets ${transfer.toTokenAccount.toBase58()}.`
     );
   }
 }

@@ -5,6 +5,11 @@ import { STORAGE_KEY, state, type BridgeStatus, type ReturnDetails } from "./sha
 
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
+export type BusyAction = {
+  buttonId: string;
+  label: string;
+};
+
 export function renderApp(): void {
   document.querySelector<HTMLDivElement>("#root")!.innerHTML = `
     <main class="shell">
@@ -123,6 +128,31 @@ export function syncBaseActionButtons(): void {
   if (claimButton) claimButton.disabled = !claimReady;
 }
 
+export function beginBusyAction(action: BusyAction): () => void {
+  const shell = document.querySelector<HTMLElement>(".shell");
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
+  const snapshots = buttons.map((button) => ({ button, disabled: button.disabled }));
+  const activeButton = document.getElementById(action.buttonId) as HTMLButtonElement | null;
+  const originalLabel = activeButton?.textContent || "";
+
+  shell?.setAttribute("aria-busy", "true");
+  for (const button of buttons) button.disabled = true;
+  if (activeButton) {
+    activeButton.textContent = action.label;
+    activeButton.classList.add("is-busy");
+  }
+
+  return () => {
+    shell?.removeAttribute("aria-busy");
+    for (const { button, disabled } of snapshots) button.disabled = disabled;
+    if (activeButton) {
+      activeButton.textContent = originalLabel;
+      activeButton.classList.remove("is-busy");
+    }
+    syncBaseActionButtons();
+  };
+}
+
 export function renderDerived(details: ReturnDetails): void {
   const token2022Warning = renderToken2022Warning(details);
   const rows: Array<[string, string, boolean?]> = [
@@ -200,8 +230,7 @@ export function renderStatus(status: BridgeStatus): void {
   const destinationRows: Array<[string, string, boolean?]> = [];
   if (transfer) {
     destinationRows.push(["SPL mint", transfer.localMint.toBase58(), true]);
-    if (state.solanaAccount) destinationRows.push(["Recipient wallet", state.solanaAccount, true]);
-    destinationRows.push(["Recipient ATA", transfer.toTokenAccount.toBase58(), true]);
+    destinationRows.push(["Recipient token account", transfer.toTokenAccount.toBase58(), true]);
     destinationRows.push(["Amount", status.displayAmount || String(transfer.amount)]);
   }
 

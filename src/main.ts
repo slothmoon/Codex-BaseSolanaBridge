@@ -7,11 +7,13 @@ import { claimOnSolana } from "./claim";
 import { STORAGE_KEY, state } from "./shared";
 import {
   $,
+  beginBusyAction,
   copyValue,
   invalidateBurnValidation,
   renderApp,
   setStatus,
-  showError
+  showError,
+  type BusyAction
 } from "./ui";
 import {
   connectBase,
@@ -29,15 +31,15 @@ renderApp();
 init().catch(showError);
 
 async function init(): Promise<void> {
-  $("connectBase").addEventListener("click", () => runSafely(connectBase));
-  $("connectSolana").addEventListener("click", () => runSafely(connectSolana));
-  $("deriveDetails").addEventListener("click", () => runSafely(previewReturn));
+  $("connectBase").addEventListener("click", () => runSafely(connectBase, { buttonId: "connectBase", label: "Connecting..." }));
+  $("connectSolana").addEventListener("click", () => runSafely(connectSolana, { buttonId: "connectSolana", label: "Connecting..." }));
+  $("deriveDetails").addEventListener("click", () => runSafely(previewReturn, { buttonId: "deriveDetails", label: "Validating..." }));
   $("bridgeForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    void runSafely(startBridge);
+    void runSafely(startBridge, { buttonId: "burnButton", label: "Burning..." });
   });
-  $("checkStatus").addEventListener("click", () => runSafely(checkStatus));
-  $("claim").addEventListener("click", () => runSafely(claimOnSolana));
+  $("checkStatus").addEventListener("click", () => runSafely(checkStatus, { buttonId: "checkStatus", label: "Checking..." }));
+  $("claim").addEventListener("click", () => runSafely(claimOnSolana, { buttonId: "claim", label: "Claiming..." }));
   document.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     const copyable = target?.closest<HTMLElement>("[data-copy-value]");
@@ -78,14 +80,16 @@ function cleanTxQueryParam(): void {
   history.replaceState(null, "", `${url.pathname}${query ? `?${query}` : ""}${url.hash}`);
 }
 
-async function runSafely(task: () => Promise<unknown>): Promise<void> {
+async function runSafely(task: () => Promise<unknown>, action?: BusyAction): Promise<void> {
   if (state.actionInFlight) return;
   state.actionInFlight = true;
+  const endBusy = action ? beginBusyAction(action) : null;
   try {
     await task();
   } catch (error) {
     showError(error);
   } finally {
     state.actionInFlight = false;
+    endBusy?.();
   }
 }

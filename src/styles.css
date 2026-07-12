@@ -151,6 +151,8 @@ button.primary { border-color: var(--blue); background: var(--blue); color: whit
 button.primary:hover:not(:disabled) { border-color: var(--blue-dark); background: var(--blue-dark); }
 button.secondary { border-color: #43536d; background: #101824; }
 button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
+button.is-busy::before { content: ""; width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid rgba(255,255,255,.38); border-top-color: currentColor; border-radius: 50%; animation: button-spin .7s linear infinite; }
+@keyframes button-spin { to { transform: rotate(360deg); } }
 .buttonStack { display: grid; gap: 10px; margin-top: 15px; }
 .buttonStack button { width: 100%; min-height: 50px; }
 .claimActions { margin-top: 18px; padding-top: 0; }
@@ -264,4 +266,5 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; }
+  button.is-busy::before { animation: none; }
 }

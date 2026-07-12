@@ -199,4 +199,32 @@ describe("Solana confirmation", () => {
     expect(result.transaction.instructions[0].programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
     expect(result.transaction.instructions[1].data.toString("hex")).toBe("bb5ab68a33f8af62");
   });
+
+  it("explains the ATA-only recovery scope for another destination", async () => {
+    const payer = key(0xc1);
+    const mint = key(0xc2);
+    const destination = key(0xc3);
+    const bytes = Buffer.alloc(98);
+    bytes[0] = 1;
+    bytes[1] = 1;
+    Buffer.alloc(20, 0xc4).copy(bytes, 2);
+    mint.toBuffer().copy(bytes, 22);
+    destination.toBuffer().copy(bytes, 54);
+    bytes.writeBigUInt64LE(5n, 86);
+    bytes.writeUInt32LE(0, 94);
+
+    const mintData = Buffer.alloc(82);
+    const connection = {
+      getAccountInfo: async () => accountInfo(mintData, TOKEN_PROGRAM_ID)
+    } as unknown as Connection;
+
+    await expect(buildRelayOnlyTransaction({
+      connection,
+      programId: key(0xc5).toBase58(),
+      payer,
+      incomingMessage: key(0xc6),
+      bridge: key(0xc7),
+      data: `0x${bytes.toString("hex")}`
+    })).rejects.toThrow(/only claims transfers sent to the connected wallet's associated token account/i);
+  });
 });
