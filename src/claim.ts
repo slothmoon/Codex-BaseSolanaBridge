@@ -37,6 +37,23 @@ export type SolanaSubmissionResult = {
   confirmation: SolanaConfirmationOutcome;
 };
 
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+export function encodeSolanaSignature(bytes: Uint8Array): string {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) + BigInt(byte);
+
+  let encoded = "";
+  while (value > 0n) {
+    encoded = BASE58_ALPHABET[Number(value % 58n)] + encoded;
+    value /= 58n;
+  }
+
+  let leadingZeroes = 0;
+  while (leadingZeroes < bytes.length && bytes[leadingZeroes] === 0) leadingZeroes += 1;
+  return "1".repeat(leadingZeroes) + encoded;
+}
+
 export async function claimOnSolana(): Promise<void> {
   const baseClient = getBaseClient();
   if (!state.solanaAccount) await connectSolana();
@@ -171,6 +188,7 @@ export async function sendSolanaTransaction(
     if (!payerSignature) {
       throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
     }
+    const localSignature = encodeSolanaSignature(payerSignature);
 
     try {
       signature = await connection.sendRawTransaction(signed.serialize(), {
@@ -178,7 +196,13 @@ export async function sendSolanaTransaction(
         skipPreflight: false
       });
     } catch (error) {
-      throw new Error(await formatSolanaError("Solana broadcast failed", error, connection));
+      return {
+        signature: localSignature,
+        confirmation: {
+          status: "unknown",
+          error: new Error(await formatSolanaError("Solana submission could not be verified", error, connection))
+        }
+      };
     }
   } else if (provider.signAndSendTransaction) {
     try {
@@ -212,7 +236,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
 
   if (result.confirmation.status === "unknown") {
     setLinkedStatus(
-      `Claim broadcast on Solana, but confirmation could not be verified:\n${result.signature}\n\nDo not burn again. Click Check status before retrying the claim.`,
+      `The Solana submission outcome could not be verified:\n${result.signature}\n\nDo not burn again. Click Check status before retrying the claim.`,
       "View on Solana Explorer",
       explorerUrl,
       "info"

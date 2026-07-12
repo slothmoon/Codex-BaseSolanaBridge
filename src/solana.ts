@@ -92,7 +92,7 @@ export async function getSolanaBridgeState(connection: Connection, programId: st
   const bridge = getBridgePda(programId);
   const account = await connection.getAccountInfo(bridge, "confirmed");
   if (!account) throw new Error("The Solana bridge state account was not found.");
-  if (account.data.length <= BRIDGE_PROTOCOL_CONFIG_OFFSET + 8) {
+  if (account.data.length < BRIDGE_PROTOCOL_CONFIG_OFFSET + 8) {
     throw new Error("The Solana bridge state account has an unexpected layout.");
   }
 

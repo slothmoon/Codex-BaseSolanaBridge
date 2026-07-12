@@ -126,6 +126,20 @@ describe("Solana account decoding", () => {
     expect(state.blockIntervalRequirement).toBe(300n);
   });
 
+  it("accepts the exact minimum Bridge account length", async () => {
+    const data = Buffer.alloc(177);
+    data.writeBigUInt64LE(900n, 8);
+    data.writeBigUInt64LE(300n, 169);
+    const connection = {
+      getAccountInfo: async () => accountInfo(data, key(0x80))
+    } as unknown as Connection;
+
+    await expect(getSolanaBridgeState(connection, key(0x80).toBase58())).resolves.toMatchObject({
+      baseBlockNumber: 900n,
+      blockIntervalRequirement: 300n
+    });
+  });
+
   it("decodes and validates the bridge vault base layout", async () => {
     const mint = key(0x91);
     const vault = key(0x92);

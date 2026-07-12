@@ -1,7 +1,12 @@
-import { Keypair, Transaction, type Connection } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction, type Connection } from "@solana/web3.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyConfirmationToClaimState, confirmSolanaTransaction, sendSolanaTransaction } from "../claim";
+import {
+  applyConfirmationToClaimState,
+  confirmSolanaTransaction,
+  encodeSolanaSignature,
+  sendSolanaTransaction
+} from "../claim";
 import { state, type SolanaProvider } from "../shared";
 
 function claimTransaction() {
@@ -113,6 +118,14 @@ describe("Solana confirmation outcomes", () => {
 });
 
 describe("Solana wallet submission paths", () => {
+  it("encodes locally known signatures in Solana base58 format", () => {
+    const bytes = new Uint8Array(32);
+    bytes[0] = 7;
+    bytes[31] = 9;
+    expect(encodeSolanaSignature(bytes)).toBe(new PublicKey(bytes).toBase58());
+    expect(encodeSolanaSignature(new Uint8Array(32))).toBe("1".repeat(32));
+  });
+
   it("signs locally, broadcasts once, and preserves an unknown confirmation", async () => {
     const { payer, transaction } = claimTransaction();
     const sendRawTransaction = vi.fn().mockResolvedValue("local-signature");
@@ -148,6 +161,25 @@ describe("Solana wallet submission paths", () => {
       signature: "wallet-signature",
       confirmation: { status: "confirmed" }
     });
+  });
+
+  it("preserves the local signature when the broadcast outcome is unknown", async () => {
+    const { payer, transaction } = claimTransaction();
+    const connection = {
+      sendRawTransaction: vi.fn().mockRejectedValue(new Error("RPC timed out"))
+    } as unknown as Connection;
+    const provider: SolanaProvider = {
+      connect: vi.fn(),
+      signTransaction: vi.fn(async (value) => {
+        value.partialSign(payer);
+        return value;
+      })
+    };
+
+    const result = await sendSolanaTransaction(provider, transaction, connection);
+    expect(result.signature).toBe(encodeSolanaSignature(transaction.signature!));
+    expect(result.confirmation.status).toBe("unknown");
+    expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an unsigned transaction before broadcasting", async () => {
