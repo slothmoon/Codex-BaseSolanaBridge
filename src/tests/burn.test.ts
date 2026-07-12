@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { CONFIG } from "./config";
-import { assertMatchingDecimals, assertOfficialWrapper, validateBridgeAmount } from "./burn";
+import { CONFIG } from "../config";
+import { assertMatchingDecimals, assertOfficialWrapper, validateBridgeAmount } from "../burn";
 
 const wrapper = "0x1111111111111111111111111111111111111111" as const;
 

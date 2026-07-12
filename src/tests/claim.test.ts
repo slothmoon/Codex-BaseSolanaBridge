@@ -1,8 +1,8 @@
 import { Keypair, Transaction, type Connection } from "@solana/web3.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyConfirmationToClaimState, confirmSolanaTransaction, sendSolanaTransaction } from "./claim";
-import { state, type SolanaProvider } from "./shared";
+import { applyConfirmationToClaimState, confirmSolanaTransaction, sendSolanaTransaction } from "../claim";
+import { state, type SolanaProvider } from "../shared";
 
 function claimTransaction() {
   const payer = Keypair.generate();

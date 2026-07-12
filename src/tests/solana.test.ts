@@ -17,7 +17,7 @@ import {
   parseBaseToSolanaTransfer,
   readIncomingMessageExecuted,
   readVaultBalance
-} from "./solana";
+} from "../solana";
 
 const key = (byte: number): PublicKey => new PublicKey(new Uint8Array(32).fill(byte));
 

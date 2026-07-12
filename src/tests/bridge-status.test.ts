@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyAvailableMessage } from "./bridge-status";
+import { classifyAvailableMessage } from "../bridge-status";
 
 const txHash = `0x${"11".repeat(32)}` as const;
 

@@ -8,7 +8,7 @@ import {
   isTransactionReceiptPending,
   nextRootBlock,
   rootBlocksRemaining
-} from "./bridge-logic";
+} from "../bridge-logic";
 
 describe("Base receipt classification", () => {
   it("treats only receipt-not-found errors as pending", () => {

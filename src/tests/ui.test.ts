@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { state } from "./shared";
-import { beginBusyAction, invalidateBurnValidation, invalidateClaimStatus, readTxHash, rememberTx } from "./ui";
+import { state } from "../shared";
+import { beginBusyAction, invalidateBurnValidation, invalidateClaimStatus, readTxHash, rememberTx } from "../ui";
 
 const hashA = `0x${"aa".repeat(32)}` as const;
 const hashB = `0x${"bb".repeat(32)}` as const;
