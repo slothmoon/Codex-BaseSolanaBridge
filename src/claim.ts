@@ -12,7 +12,7 @@ import {
   incomingMessageAccountSpace,
   type ParsedTransfer
 } from "./solana";
-import { getBaseClient, solana, state, type BridgeStatus, type SolanaProvider } from "./shared";
+import { getBaseClient, solana, state, type SolanaProvider } from "./shared";
 import {
   errorMessage,
   formatSolanaError,
@@ -54,6 +54,19 @@ export function encodeSolanaSignature(bytes: Uint8Array): string {
   return "1".repeat(leadingZeroes) + encoded;
 }
 
+export function getClaimProofAccountSpace(incomingAccountExists: boolean, messageData: Hex): number {
+  return incomingAccountExists ? 0 : incomingMessageAccountSpace(messageData);
+}
+
+export function formatUnknownSubmissionMessage(signature: string, error: unknown): string {
+  return [
+    "The Solana submission outcome could not be verified:",
+    signature,
+    `Reason: ${errorMessage(error)}`,
+    "Do not burn again. Click Check status before retrying the claim."
+  ].join("\n\n");
+}
+
 export async function claimOnSolana(): Promise<void> {
   const baseClient = getBaseClient();
   if (!state.solanaAccount) await connectSolana();
@@ -78,6 +91,7 @@ export async function claimOnSolana(): Promise<void> {
   const payer = new PublicKey(state.solanaAccount);
   const bridgeState = await getSolanaBridgeState(solana, CONFIG.solanaBridgeProgram);
   const incomingInfo = await solana.getAccountInfo(status.incomingMessage, "confirmed");
+  const proofAccountSpace = getClaimProofAccountSpace(Boolean(incomingInfo), status.messageData);
 
   setStatus("Building the Solana claim transaction in your browser...");
   let transaction: Transaction;
@@ -122,7 +136,7 @@ export async function claimOnSolana(): Promise<void> {
     }));
   }
 
-  await assertEnoughSol(transaction, payer, status, transfer);
+  await assertEnoughSol(transaction, payer, transfer, proofAccountSpace);
   setStatus("Simulating the complete Solana claim before asking for a signature...");
   let simulation;
   try {
@@ -236,7 +250,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
 
   if (result.confirmation.status === "unknown") {
     setLinkedStatus(
-      `The Solana submission outcome could not be verified:\n${result.signature}\n\nDo not burn again. Click Check status before retrying the claim.`,
+      formatUnknownSubmissionMessage(result.signature, result.confirmation.error),
       "View on Solana Explorer",
       explorerUrl,
       "info"
@@ -266,8 +280,8 @@ export function applyConfirmationToClaimState(confirmation: SolanaConfirmationOu
 async function assertEnoughSol(
   transaction: Transaction,
   payer: PublicKey,
-  status: BridgeStatus,
-  transfer: ParsedTransfer
+  transfer: ParsedTransfer,
+  proofAccountSpace: number
 ): Promise<void> {
   const [balance, feeResult, ataInfo] = await Promise.all([
     solana.getBalance(payer, "confirmed"),
@@ -276,8 +290,8 @@ async function assertEnoughSol(
   ]);
 
   let required = BigInt(feeResult.value ?? 5_000);
-  if (status.status === "ready_to_claim" && status.messageData) {
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(incomingMessageAccountSpace(status.messageData), "confirmed"));
+  if (proofAccountSpace > 0) {
+    required += BigInt(await solana.getMinimumBalanceForRentExemption(proofAccountSpace, "confirmed"));
   }
   if (!ataInfo) {
     // This is a conservative preliminary estimate for a standard token account.

@@ -5,6 +5,8 @@ import {
   applyConfirmationToClaimState,
   confirmSolanaTransaction,
   encodeSolanaSignature,
+  formatUnknownSubmissionMessage,
+  getClaimProofAccountSpace,
   sendSolanaTransaction
 } from "../claim";
 import { state, type SolanaProvider } from "../shared";
@@ -118,6 +120,17 @@ describe("Solana confirmation outcomes", () => {
 });
 
 describe("Solana wallet submission paths", () => {
+  it("derives proof rent from the account path actually used", () => {
+    expect(getClaimProofAccountSpace(false, "0x010203")).toBe(36);
+    expect(getClaimProofAccountSpace(true, "0x010203")).toBe(0);
+  });
+
+  it("keeps the RPC failure reason in unknown-submission guidance", () => {
+    const message = formatUnknownSubmissionMessage("signature", new Error("RPC timed out"));
+    expect(message).toMatch(/RPC timed out/);
+    expect(message).toMatch(/Do not burn again/);
+  });
+
   it("encodes locally known signatures in Solana base58 format", () => {
     const bytes = new Uint8Array(32);
     bytes[0] = 7;

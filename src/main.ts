@@ -1,6 +1,4 @@
 import { Buffer } from "buffer";
-import { isHash } from "viem";
-
 import { previewReturn, startBridge } from "./burn";
 import { checkStatus } from "./bridge-status";
 import { claimOnSolana } from "./claim";
@@ -11,7 +9,9 @@ import {
   copyValue,
   invalidateBurnValidation,
   invalidateClaimStatus,
+  rememberTx,
   renderApp,
+  selectInitialTxHash,
   setStatus,
   showError,
   type BusyAction
@@ -58,10 +58,9 @@ async function init(): Promise<void> {
 
   const queryTx = new URLSearchParams(location.search).get("tx");
   const savedTx = readSavedTx();
-  const txHash = queryTx || savedTx || "";
-  if (txHash && isHash(txHash)) {
-    state.currentTxHash = txHash;
-    $<HTMLInputElement>("txHash").value = txHash;
+  const txHash = selectInitialTxHash(queryTx, savedTx);
+  if (txHash) {
+    rememberTx(txHash);
     setStatus("Saved Base transaction loaded. Click Check status.");
   }
   if (queryTx) cleanTxQueryParam();

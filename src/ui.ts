@@ -325,6 +325,11 @@ export function readTxHash(): Hex {
   return value;
 }
 
+export function selectInitialTxHash(queryTx: string | null, savedTx: string): Hex | "" {
+  if (queryTx && isHash(queryTx)) return queryTx;
+  return isHash(savedTx) ? savedTx : "";
+}
+
 export function rememberTx(txHash: Hex): void {
   if (state.currentTxHash && state.currentTxHash !== txHash) invalidateClaimStatus();
   state.currentTxHash = txHash;

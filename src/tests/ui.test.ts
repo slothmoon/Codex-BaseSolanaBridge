@@ -1,11 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { state } from "../shared";
-import { beginBusyAction, invalidateBurnValidation, invalidateClaimStatus, readTxHash, rememberTx, syncBaseActionButtons } from "../ui";
+import {
+  beginBusyAction,
+  invalidateBurnValidation,
+  invalidateClaimStatus,
+  readTxHash,
+  rememberTx,
+  selectInitialTxHash,
+  syncBaseActionButtons
+} from "../ui";
 
 const hashA = `0x${"aa".repeat(32)}` as const;
 const hashB = `0x${"bb".repeat(32)}` as const;
 const originalDocument = globalThis.document;
+const originalLocalStorage = globalThis.localStorage;
 
 function installDocument() {
   const claim = { disabled: false } as HTMLButtonElement;
@@ -28,9 +37,33 @@ afterEach(() => {
     configurable: true,
     value: originalDocument
   });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: originalLocalStorage
+  });
 });
 
 describe("claim status invalidation", () => {
+  it("prefers a valid recovery URL and falls back from an invalid one", () => {
+    expect(selectInitialTxHash(hashB, hashA)).toBe(hashB);
+    expect(selectInitialTxHash("invalid", hashA)).toBe(hashA);
+    expect(selectInitialTxHash(null, "invalid")).toBe("");
+  });
+
+  it("persists a recovery hash before the URL can be cleaned", () => {
+    const { txInput } = installDocument();
+    const setItem = vi.fn();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { setItem }
+    });
+
+    rememberTx(hashB);
+
+    expect(setItem).toHaveBeenCalledWith("base-solana-bridge:last-base-tx", hashB);
+    expect(txInput.value).toBe(hashB);
+  });
+
   it("clears the previous status and disables claiming", () => {
     const { claim, statusBox } = installDocument();
     state.currentStatus = {
