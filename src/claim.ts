@@ -188,6 +188,20 @@ export async function confirmSolanaTransaction(
     }
     return { status: "failed", reason: confirmation.value.err, logs };
   } catch (error) {
+    try {
+      const fallback = await connection.getSignatureStatuses([signature], {
+        searchTransactionHistory: true
+      });
+      const status = fallback.value[0];
+      if (status?.err) {
+        return { status: "failed", reason: status.err, logs: undefined };
+      }
+      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
+        return { status: "confirmed" };
+      }
+    } catch {
+      // Preserve the original confirmation error if the one-shot fallback also fails.
+    }
     return { status: "unknown", error };
   }
 }

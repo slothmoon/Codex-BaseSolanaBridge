@@ -67,13 +67,16 @@ describe("post-submission claim state", () => {
 describe("Solana confirmation outcomes", () => {
   it("reports a successful confirmation", async () => {
     const { transaction } = claimTransaction();
+    const getSignatureStatuses = vi.fn();
     const connection = {
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } })
+      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
+      getSignatureStatuses
     } as unknown as Connection;
 
     await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
       status: "confirmed"
     });
+    expect(getSignatureStatuses).not.toHaveBeenCalled();
   });
 
   it("reports an on-chain failure with transaction logs", async () => {
@@ -106,11 +109,68 @@ describe("Solana confirmation outcomes", () => {
     });
   });
 
-  it("reports an unknown outcome when confirmation cannot be read", async () => {
+  it.each(["confirmed", "finalized"] as const)(
+    "recovers a %s transaction after confirmation throws",
+    async (confirmationStatus) => {
+      const { transaction } = claimTransaction();
+      const connection = {
+        confirmTransaction: vi.fn().mockRejectedValue(new Error("confirmation timed out")),
+        getSignatureStatuses: vi.fn().mockResolvedValue({
+          value: [{ err: null, confirmationStatus }]
+        })
+      } as unknown as Connection;
+
+      await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
+        status: "confirmed"
+      });
+      expect(connection.getSignatureStatuses).toHaveBeenCalledOnce();
+      expect(connection.getSignatureStatuses).toHaveBeenCalledWith(["signature"], {
+        searchTransactionHistory: true
+      });
+    }
+  );
+
+  it("recovers an on-chain failure after confirmation throws", async () => {
+    const { transaction } = claimTransaction();
+    const error = new Error("confirmation timed out");
+    const reason = { InstructionError: [1, { Custom: 6000 }] };
+    const connection = {
+      confirmTransaction: vi.fn().mockRejectedValue(error),
+      getSignatureStatuses: vi.fn().mockResolvedValue({
+        value: [{ err: reason, confirmationStatus: "confirmed" }]
+      })
+    } as unknown as Connection;
+
+    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
+      status: "failed",
+      reason,
+      logs: undefined
+    });
+  });
+
+  it.each([null, { err: null, confirmationStatus: "processed" }])(
+    "reports an unknown outcome when the fallback has no confirmed result",
+    async (fallbackStatus) => {
+      const { transaction } = claimTransaction();
+      const error = new Error("confirmation timed out");
+      const connection = {
+        confirmTransaction: vi.fn().mockRejectedValue(error),
+        getSignatureStatuses: vi.fn().mockResolvedValue({ value: [fallbackStatus] })
+      } as unknown as Connection;
+
+      await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
+        status: "unknown",
+        error
+      });
+    }
+  );
+
+  it("preserves the confirmation error when the fallback also fails", async () => {
     const { transaction } = claimTransaction();
     const error = new Error("confirmation timed out");
     const connection = {
-      confirmTransaction: vi.fn().mockRejectedValue(error)
+      confirmTransaction: vi.fn().mockRejectedValue(error),
+      getSignatureStatuses: vi.fn().mockRejectedValue(new Error("status lookup failed"))
     } as unknown as Connection;
 
     await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({

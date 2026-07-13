@@ -10,7 +10,6 @@ import {
 import {
   classifyIncomingMessageAccount,
   getIncomingMessagePda,
-  getOutputRootPda,
   getSolanaBridgeState,
   parseBaseToSolanaTransfer,
   readMintInfo
