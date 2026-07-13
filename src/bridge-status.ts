@@ -8,11 +8,11 @@ import {
   rootBlocksRemaining
 } from "./bridge-logic";
 import {
+  classifyIncomingMessageAccount,
   getIncomingMessagePda,
   getOutputRootPda,
   getSolanaBridgeState,
   parseBaseToSolanaTransfer,
-  readIncomingMessageExecuted,
   readMintInfo
 } from "./solana";
 import { getBaseClient, solana, state, type BridgeStatus } from "./shared";
@@ -57,6 +57,7 @@ export async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
 
   const incomingMessage = getIncomingMessagePda(CONFIG.solanaBridgeProgram, event.messageHash);
   const incomingInfo = await solana.getAccountInfo(incomingMessage, "confirmed");
+  const incomingState = classifyIncomingMessageAccount(incomingInfo, CONFIG.solanaBridgeProgram, event.message.data);
 
   const common = {
     txHash,
@@ -74,9 +75,7 @@ export async function refreshStatus(txHash: Hex): Promise<BridgeStatus> {
 
   return classifyAvailableMessage({
     common,
-    incomingExecuted: incomingInfo
-      ? readIncomingMessageExecuted(incomingInfo.data, event.message.data)
-      : null,
+    incomingExecuted: incomingState.kind === "initialized" ? incomingState.executed : null,
     latestRootBlock: bridgeState.baseBlockNumber,
     blockIntervalRequirement: bridgeState.blockIntervalRequirement
   });

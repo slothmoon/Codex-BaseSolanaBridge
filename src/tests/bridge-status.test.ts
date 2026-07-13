@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TransactionReceiptNotFoundError, encodeAbiParameters, encodeEventTopics } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -68,7 +68,13 @@ function mockReadyReads(incomingData: Buffer | null = null) {
     tokenProgramLabel: "Standard SPL Token"
   });
   vi.spyOn(shared.solana, "getAccountInfo").mockResolvedValue(incomingData
-    ? { data: incomingData } as never
+    ? {
+        data: incomingData,
+        owner: new PublicKey(CONFIG.solanaBridgeProgram),
+        lamports: 1,
+        executable: false,
+        rentEpoch: 0
+      } as never
     : null);
   return { messageData, mint };
 }
@@ -160,11 +166,26 @@ describe("refreshStatus orchestration", () => {
 
   it("detects an already executed incoming message", async () => {
     const { messageData } = bridgeReceipt();
-    const accountData = Buffer.alloc(8 + 20 + Buffer.from(messageData.slice(2), "hex").length + 1);
-    accountData[accountData.length - 1] = 1;
+    const messageLength = Buffer.from(messageData.slice(2), "hex").length;
+    const accountData = Buffer.alloc(8 + 20 + 4 + messageLength + 1);
+    Buffer.from([30, 144, 125, 111, 211, 223, 91, 170]).copy(accountData);
+    accountData[8 + 20 + messageLength] = 1;
     mockReadyReads(accountData);
 
     await expect(refreshStatus(txHash)).resolves.toMatchObject({ status: "claimed" });
+  });
+
+  it("treats a prefunded system-owned incoming PDA as an absent proof", async () => {
+    mockReadyReads();
+    vi.mocked(shared.solana.getAccountInfo).mockResolvedValue({
+      data: Buffer.alloc(0),
+      owner: SystemProgram.programId,
+      lamports: 890_880,
+      executable: false,
+      rentEpoch: 0
+    } as never);
+
+    await expect(refreshStatus(txHash)).resolves.toMatchObject({ status: "ready_to_claim" });
   });
 
   it("propagates non-pending RPC failures", async () => {

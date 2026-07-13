@@ -44,7 +44,7 @@ async function init(): Promise<void> {
     const target = event.target as HTMLElement | null;
     const copyable = target?.closest<HTMLElement>("[data-copy-value]");
     if (!copyable) return;
-    void runSafely(() => copyValue(copyable.dataset.copyValue || ""));
+    void copyValue(copyable.dataset.copyValue || "");
   });
   $<HTMLInputElement>("localToken").addEventListener("input", () => invalidateBurnValidation());
   $<HTMLInputElement>("amount").addEventListener("input", () => invalidateBurnValidation());
@@ -57,11 +57,11 @@ async function init(): Promise<void> {
 
   const queryTx = new URLSearchParams(location.search).get("tx");
   const savedTx = readSavedTx();
-  const txHash = initializeRecoveryTx(queryTx, savedTx);
-  if (txHash) {
+  const recovery = initializeRecoveryTx(queryTx, savedTx);
+  if (recovery.txHash) {
     setStatus("Saved Base transaction loaded. Click Check status.");
   }
-  if (queryTx) cleanTxQueryParam();
+  if (queryTx && recovery.canCleanQuery) cleanTxQueryParam();
 }
 
 function readSavedTx(): string {

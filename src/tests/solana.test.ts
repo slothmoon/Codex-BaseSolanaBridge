@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,6 +8,7 @@ import {
   TOKEN_PROGRAM_ID,
   buildClaimTransaction,
   buildRelayOnlyTransaction,
+  classifyIncomingMessageAccount,
   createRelayInstruction,
   deriveAta,
   encodeProveMessage,
@@ -161,6 +162,57 @@ describe("Solana account decoding", () => {
     data[data.length - 1] = 1;
     expect(readIncomingMessageExecuted(data, message)).toBe(true);
     expect(incomingMessageAccountSpace(message)).toBe(36);
+  });
+
+  it("classifies missing and prefunded incoming message PDAs as unproven", () => {
+    const program = key(0x93);
+    const message = "0x010203" as const;
+    expect(classifyIncomingMessageAccount(null, program.toBase58(), message)).toEqual({
+      kind: "missing",
+      lamports: 0
+    });
+    expect(classifyIncomingMessageAccount(
+      accountInfo(Buffer.alloc(0), SystemProgram.programId),
+      program.toBase58(),
+      message
+    )).toEqual({ kind: "prefunded", lamports: 1 });
+  });
+
+  it("validates the owner, discriminator, layout, and executed flag of a proven message", () => {
+    const program = key(0x94);
+    const message = "0x010203" as const;
+    const data = Buffer.alloc(incomingMessageAccountSpace(message));
+    Buffer.from([30, 144, 125, 111, 211, 223, 91, 170]).copy(data);
+    data[8 + 20 + 3] = 1;
+
+    expect(classifyIncomingMessageAccount(
+      accountInfo(data, program),
+      program.toBase58(),
+      message
+    )).toEqual({ kind: "initialized", lamports: 1, executed: true });
+
+    expect(() => classifyIncomingMessageAccount(
+      accountInfo(data, key(0x95)),
+      program.toBase58(),
+      message
+    )).toThrow(/unexpected program/i);
+    expect(() => classifyIncomingMessageAccount(
+      accountInfo(Buffer.alloc(data.length), program),
+      program.toBase58(),
+      message
+    )).toThrow(/discriminator/i);
+    expect(() => classifyIncomingMessageAccount(
+      accountInfo(data.subarray(0, data.length - 1), program),
+      program.toBase58(),
+      message
+    )).toThrow(/layout/i);
+
+    data[8 + 20 + 3] = 2;
+    expect(() => classifyIncomingMessageAccount(
+      accountInfo(data, program),
+      program.toBase58(),
+      message
+    )).toThrow(/executed flag/i);
   });
 });
 

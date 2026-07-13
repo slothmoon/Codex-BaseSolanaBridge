@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CONFIG } from "../config";
-import { assertMatchingDecimals, assertOfficialWrapper, validateBridgeAmount } from "../burn";
+import { assertMatchingDecimals, assertOfficialWrapper, formatBaseSubmissionFailure, validateBridgeAmount } from "../burn";
 
 const wrapper = "0x1111111111111111111111111111111111111111" as const;
 
@@ -59,5 +59,16 @@ describe("bridge amount validation", () => {
   it("rejects insufficient wrapper and vault balances", () => {
     expect(() => validateBridgeAmount({ ...valid, wrapperBalance: 1_000_000n })).toThrow(/insufficient Base balance/i);
     expect(() => validateBridgeAmount({ ...valid, vaultBalance: 1_000_000n })).toThrow(/bridge vault has only/i);
+  });
+});
+
+describe("Base submission recovery guidance", () => {
+  it("distinguishes explicit rejection from an ambiguous provider failure", () => {
+    expect(formatBaseSubmissionFailure({ code: 4001, message: "rejected" })).toMatch(/nothing was submitted/i);
+    expect(formatBaseSubmissionFailure({ cause: { code: 4001 } })).toMatch(/nothing was submitted/i);
+    const ambiguous = formatBaseSubmissionFailure(new Error("provider disconnected"));
+    expect(ambiguous).toMatch(/could not be verified/i);
+    expect(ambiguous).toMatch(/check your wallet activity/i);
+    expect(ambiguous).toMatch(/do not burn again/i);
   });
 });

@@ -110,7 +110,7 @@ export function invalidateBurnValidation(): void {
 export function syncBaseActionButtons(): void {
   if (state.actionInFlight) {
     for (const button of document.querySelectorAll<HTMLButtonElement>("button")) {
-      button.disabled = true;
+      button.disabled = !isCopyButton(button);
     }
     return;
   }
@@ -149,7 +149,9 @@ export function beginBusyAction(action: BusyAction): () => void {
   const originalLabel = activeButton?.textContent || "";
 
   shell?.setAttribute("aria-busy", "true");
-  for (const button of buttons) button.disabled = true;
+  for (const button of buttons) {
+    if (!isCopyButton(button)) button.disabled = true;
+  }
   for (const input of inputs) input.disabled = true;
   if (activeButton) {
     activeButton.textContent = action.label;
@@ -310,8 +312,12 @@ export function showError(error: unknown): void {
 
 export async function copyValue(value: string): Promise<void> {
   if (!value) return;
-  await navigator.clipboard.writeText(value);
-  showToast(`Copied ${short(value)}`);
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(`Copied ${short(value)}`);
+  } catch (error) {
+    showToast(`Copy failed: ${errorMessage(error)}`, "error");
+  }
 }
 
 export function renderCopyValue(value: string): string {
@@ -330,20 +336,31 @@ export function selectInitialTxHash(queryTx: string | null, savedTx: string): He
   return isHash(savedTx) ? savedTx : "";
 }
 
-export function initializeRecoveryTx(queryTx: string | null, savedTx: string): Hex | "" {
+export type RecoveryInitialization = {
+  txHash: Hex | "";
+  canCleanQuery: boolean;
+};
+
+export function initializeRecoveryTx(queryTx: string | null, savedTx: string): RecoveryInitialization {
   const txHash = selectInitialTxHash(queryTx, savedTx);
-  if (txHash) rememberTx(txHash);
-  return txHash;
+  const queryWasSelected = Boolean(queryTx && txHash === queryTx);
+  const persisted = txHash ? rememberTx(txHash) : false;
+  return {
+    txHash,
+    canCleanQuery: !queryWasSelected || persisted
+  };
 }
 
-export function rememberTx(txHash: Hex): void {
+export function rememberTx(txHash: Hex): boolean {
   if (state.currentTxHash && state.currentTxHash !== txHash) invalidateClaimStatus();
   state.currentTxHash = txHash;
   $<HTMLInputElement>("txHash").value = txHash;
   try {
     localStorage.setItem(STORAGE_KEY, txHash);
+    return true;
   } catch {
     // Remembering the last tx is a convenience; bridge actions must not depend on browser storage.
+    return false;
   }
 }
 
@@ -357,6 +374,10 @@ function clearClaimReadiness(): void {
   state.currentStatus = null;
   const claim = document.getElementById("claim") as HTMLButtonElement | null;
   if (claim) claim.disabled = true;
+}
+
+function isCopyButton(button: HTMLButtonElement): boolean {
+  return button.classList?.contains?.("copy-chip") ?? false;
 }
 
 export function errorMessage(error: unknown): string {
@@ -416,15 +437,18 @@ export function escapeHtml(value: string): string {
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-function showToast(message: string): void {
+function showToast(message: string, tone: "success" | "error" = "success"): void {
   let toast = document.getElementById("copyToast");
   if (!toast) {
     toast = document.createElement("div");
     toast.id = "copyToast";
     toast.className = "copy-toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
     document.body.appendChild(toast);
   }
   toast.textContent = message;
+  toast.classList.toggle("error", tone === "error");
   toast.classList.add("visible");
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast?.classList.remove("visible"), 1600);

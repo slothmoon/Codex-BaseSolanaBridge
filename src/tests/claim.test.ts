@@ -2,6 +2,7 @@ import { Keypair, PublicKey, Transaction, type Connection } from "@solana/web3.j
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  additionalRentLamports,
   applyConfirmationToClaimState,
   confirmSolanaTransaction,
   encodeSolanaSignature,
@@ -121,8 +122,11 @@ describe("Solana confirmation outcomes", () => {
 
 describe("Solana wallet submission paths", () => {
   it("derives proof rent from the account path actually used", () => {
-    expect(getClaimProofAccountSpace(false, "0x010203")).toBe(36);
-    expect(getClaimProofAccountSpace(true, "0x010203")).toBe(0);
+    expect(getClaimProofAccountSpace({ kind: "missing", lamports: 0 }, "0x010203")).toBe(36);
+    expect(getClaimProofAccountSpace({ kind: "prefunded", lamports: 890_880 }, "0x010203")).toBe(36);
+    expect(getClaimProofAccountSpace({ kind: "initialized", lamports: 1, executed: false }, "0x010203")).toBe(0);
+    expect(additionalRentLamports(1_000_000n, 890_880n)).toBe(109_120n);
+    expect(additionalRentLamports(1_000_000n, 1_000_000n)).toBe(0n);
   });
 
   it("keeps the RPC failure reason in unknown-submission guidance", () => {
@@ -139,7 +143,7 @@ describe("Solana wallet submission paths", () => {
     expect(encodeSolanaSignature(new Uint8Array(32))).toBe("1".repeat(32));
   });
 
-  it("signs locally, broadcasts once, and preserves an unknown confirmation", async () => {
+  it("signs locally, broadcasts once, and tracks the canonical signature", async () => {
     const { payer, transaction } = claimTransaction();
     const sendRawTransaction = vi.fn().mockResolvedValue("local-signature");
     const connection = {
@@ -155,9 +159,40 @@ describe("Solana wallet submission paths", () => {
     };
 
     const result = await sendSolanaTransaction(provider, transaction, connection);
-    expect(result.signature).toBe("local-signature");
+    expect(result.signature).toBe(encodeSolanaSignature(transaction.signature!));
     expect(result.confirmation.status).toBe("unknown");
+    expect(result.warning).toMatch(/unexpected signature/i);
     expect(sendRawTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirms using the transaction actually returned by the wallet", async () => {
+    const { payer, transaction } = claimTransaction();
+    const signed = new Transaction({
+      feePayer: payer.publicKey,
+      blockhash: Keypair.generate().publicKey.toBase58(),
+      lastValidBlockHeight: 5678
+    });
+    signed.partialSign(payer);
+    const localSignature = encodeSolanaSignature(signed.signature!);
+    const confirmTransaction = vi.fn().mockResolvedValue({ value: { err: null } });
+    const connection = {
+      sendRawTransaction: vi.fn().mockResolvedValue(localSignature),
+      confirmTransaction
+    } as unknown as Connection;
+    const provider: SolanaProvider = {
+      connect: vi.fn(),
+      signTransaction: vi.fn().mockResolvedValue(signed)
+    };
+
+    await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toEqual({
+      signature: localSignature,
+      confirmation: { status: "confirmed" }
+    });
+    expect(confirmTransaction).toHaveBeenCalledWith({
+      signature: localSignature,
+      blockhash: signed.recentBlockhash,
+      lastValidBlockHeight: 5678
+    }, "confirmed");
   });
 
   it("supports wallets that sign and broadcast themselves", async () => {

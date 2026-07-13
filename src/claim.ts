@@ -6,10 +6,12 @@ import { BRIDGE_ABI, CONFIG } from "./config";
 import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
+  classifyIncomingMessageAccount,
   getBlockheightConfirmationStrategy,
   getOutputRootPda,
   getSolanaBridgeState,
   incomingMessageAccountSpace,
+  type IncomingMessageAccountState,
   type ParsedTransfer
 } from "./solana";
 import { getBaseClient, solana, state, type SolanaProvider } from "./shared";
@@ -35,6 +37,7 @@ export type SolanaConfirmationOutcome =
 export type SolanaSubmissionResult = {
   signature: string;
   confirmation: SolanaConfirmationOutcome;
+  warning?: string;
 };
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -54,8 +57,12 @@ export function encodeSolanaSignature(bytes: Uint8Array): string {
   return "1".repeat(leadingZeroes) + encoded;
 }
 
-export function getClaimProofAccountSpace(incomingAccountExists: boolean, messageData: Hex): number {
-  return incomingAccountExists ? 0 : incomingMessageAccountSpace(messageData);
+export function getClaimProofAccountSpace(incomingState: IncomingMessageAccountState, messageData: Hex): number {
+  return incomingState.kind === "initialized" ? 0 : incomingMessageAccountSpace(messageData);
+}
+
+export function additionalRentLamports(requiredRent: bigint, existingLamports: bigint): bigint {
+  return requiredRent > existingLamports ? requiredRent - existingLamports : 0n;
 }
 
 export function formatUnknownSubmissionMessage(signature: string, error: unknown): string {
@@ -91,13 +98,15 @@ export async function claimOnSolana(): Promise<void> {
   const payer = new PublicKey(state.solanaAccount);
   const bridgeState = await getSolanaBridgeState(solana, CONFIG.solanaBridgeProgram);
   const incomingInfo = await solana.getAccountInfo(status.incomingMessage, "confirmed");
-  const proofAccountSpace = getClaimProofAccountSpace(Boolean(incomingInfo), status.messageData);
+  const incomingState = classifyIncomingMessageAccount(incomingInfo, CONFIG.solanaBridgeProgram, status.messageData);
+  const proofAccountSpace = getClaimProofAccountSpace(incomingState, status.messageData);
+  const proofAccountLamports = BigInt(incomingState.lamports);
 
   setStatus("Building the Solana claim transaction in your browser...");
   let transaction: Transaction;
   let transfer: ParsedTransfer;
 
-  if (incomingInfo) {
+  if (incomingState.kind === "initialized") {
     ({ transaction, transfer } = await buildRelayOnlyTransaction({
       connection: solana,
       programId: CONFIG.solanaBridgeProgram,
@@ -136,7 +145,7 @@ export async function claimOnSolana(): Promise<void> {
     }));
   }
 
-  await assertEnoughSol(transaction, payer, transfer, proofAccountSpace);
+  await assertEnoughSol(transaction, payer, transfer, proofAccountSpace, proofAccountLamports);
   setStatus("Simulating the complete Solana claim before asking for a signature...");
   let simulation;
   try {
@@ -187,6 +196,8 @@ export async function sendSolanaTransaction(
   connection: Connection
 ): Promise<SolanaSubmissionResult> {
   let signature: string;
+  let confirmationTransaction = transaction;
+  let warning: string | undefined;
 
   if (provider.signTransaction) {
     let signed: Transaction;
@@ -203,12 +214,17 @@ export async function sendSolanaTransaction(
       throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
     }
     const localSignature = encodeSolanaSignature(payerSignature);
+    confirmationTransaction = signed;
 
     try {
-      signature = await connection.sendRawTransaction(signed.serialize(), {
+      const rpcSignature = await connection.sendRawTransaction(signed.serialize(), {
         preflightCommitment: "confirmed",
         skipPreflight: false
       });
+      signature = localSignature;
+      if (rpcSignature !== localSignature) {
+        warning = `The Solana RPC returned unexpected signature ${rpcSignature}. Tracking the canonical signed transaction ${localSignature}.`;
+      }
     } catch (error) {
       return {
         signature: localSignature,
@@ -230,7 +246,8 @@ export async function sendSolanaTransaction(
 
   return {
     signature,
-    confirmation: await confirmSolanaTransaction(connection, transaction, signature)
+    confirmation: await confirmSolanaTransaction(connection, confirmationTransaction, signature),
+    ...(warning ? { warning } : {})
   };
 }
 
@@ -240,7 +257,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
 
   if (result.confirmation.status === "failed") {
     throw new Error(formatSolanaFailure(
-      "Solana claim failed on-chain. Retry the same Base transaction hash; do not burn again",
+      `${result.warning ? `${result.warning}\n\n` : ""}Solana claim failed on-chain. Retry the same Base transaction hash; do not burn again`,
       result.confirmation.reason,
       result.confirmation.logs
     ));
@@ -250,7 +267,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
 
   if (result.confirmation.status === "unknown") {
     setLinkedStatus(
-      formatUnknownSubmissionMessage(result.signature, result.confirmation.error),
+      `${result.warning ? `${result.warning}\n\n` : ""}${formatUnknownSubmissionMessage(result.signature, result.confirmation.error)}`,
       "View on Solana Explorer",
       explorerUrl,
       "info"
@@ -259,7 +276,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
   }
 
   setLinkedStatus(
-    `Claim confirmed on Solana:\n${result.signature}`,
+    `${result.warning ? `${result.warning}\n\n` : ""}Claim confirmed on Solana:\n${result.signature}`,
     "View on Solana Explorer",
     explorerUrl
   );
@@ -281,7 +298,8 @@ async function assertEnoughSol(
   transaction: Transaction,
   payer: PublicKey,
   transfer: ParsedTransfer,
-  proofAccountSpace: number
+  proofAccountSpace: number,
+  proofAccountLamports: bigint
 ): Promise<void> {
   const [balance, feeResult, ataInfo] = await Promise.all([
     solana.getBalance(payer, "confirmed"),
@@ -291,7 +309,8 @@ async function assertEnoughSol(
 
   let required = BigInt(feeResult.value ?? 5_000);
   if (proofAccountSpace > 0) {
-    required += BigInt(await solana.getMinimumBalanceForRentExemption(proofAccountSpace, "confirmed"));
+    const proofRent = BigInt(await solana.getMinimumBalanceForRentExemption(proofAccountSpace, "confirmed"));
+    required += additionalRentLamports(proofRent, proofAccountLamports);
   }
   if (!ataInfo) {
     // This is a conservative preliminary estimate for a standard token account.

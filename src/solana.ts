@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import {
+  type AccountInfo,
   Connection,
   PublicKey,
   SystemProgram,
@@ -24,6 +25,7 @@ const TOKEN_VAULT_SEED = Buffer.from("token_vault");
 const BRIDGE_PROTOCOL_CONFIG_OFFSET = 8 + 8 + 8 + 32 + 1 + 56 + 56;
 const PROVE_MESSAGE_DISCRIMINATOR = Buffer.from([172, 66, 78, 136, 158, 187, 47, 115]);
 const RELAY_MESSAGE_DISCRIMINATOR = Buffer.from([187, 90, 182, 138, 51, 248, 175, 98]);
+const INCOMING_MESSAGE_DISCRIMINATOR = Buffer.from([30, 144, 125, 111, 211, 223, 91, 170]);
 const CREATE_IDEMPOTENT_ATA_DISCRIMINATOR = Buffer.from([1]);
 const MINT_SIZE = 82;
 
@@ -46,6 +48,11 @@ export type MintInfo = {
   decimals: number;
   tokenProgramLabel: "Standard SPL Token" | "Token-2022";
 };
+
+export type IncomingMessageAccountState =
+  | { kind: "missing"; lamports: 0 }
+  | { kind: "prefunded"; lamports: number }
+  | { kind: "initialized"; lamports: number; executed: boolean };
 
 export function pubkeyToBytes32(value: PublicKey | string): `0x${string}` {
   const publicKey = typeof value === "string" ? new PublicKey(value) : value;
@@ -218,13 +225,49 @@ export function incomingMessageAccountSpace(data: Hex): number {
   return 8 + 20 + 4 + hexToBytes(data).length + 1;
 }
 
+export function classifyIncomingMessageAccount(
+  account: AccountInfo<Buffer> | null,
+  programId: string,
+  messageData: Hex
+): IncomingMessageAccountState {
+  if (!account) return { kind: "missing", lamports: 0 };
+
+  if (account.owner.equals(SystemProgram.programId)) {
+    if (account.data.length !== 0) {
+      throw new Error("The Solana incoming message PDA is system-owned but has unexpected data.");
+    }
+    return { kind: "prefunded", lamports: account.lamports };
+  }
+
+  if (!account.owner.equals(new PublicKey(programId))) {
+    throw new Error(`The Solana incoming message PDA is owned by unexpected program ${account.owner.toBase58()}.`);
+  }
+
+  const data = Buffer.from(account.data);
+  const expectedSpace = incomingMessageAccountSpace(messageData);
+  if (data.length !== expectedSpace) {
+    throw new Error("The Solana incoming message account has an unexpected layout.");
+  }
+  if (!data.subarray(0, INCOMING_MESSAGE_DISCRIMINATOR.length).equals(INCOMING_MESSAGE_DISCRIMINATOR)) {
+    throw new Error("The Solana incoming message account has an unexpected discriminator.");
+  }
+
+  return {
+    kind: "initialized",
+    lamports: account.lamports,
+    executed: readIncomingMessageExecuted(data, messageData)
+  };
+}
+
 export function readIncomingMessageExecuted(accountData: Buffer | Uint8Array, messageData: Hex): boolean {
   // The program overallocates IncomingMessage by 4 bytes, but the `message`
   // field itself is a Borsh enum, not a Vec. The executed flag is serialized
   // immediately after the raw Message bytes.
   const executedOffset = 8 + 20 + hexToBytes(messageData).length;
   if (accountData.length <= executedOffset) throw new Error("The Solana incoming message account has an unexpected layout.");
-  return accountData[executedOffset] === 1;
+  const executed = accountData[executedOffset];
+  if (executed !== 0 && executed !== 1) throw new Error("The Solana incoming message account has an invalid executed flag.");
+  return executed === 1;
 }
 
 function assertRecipientWallet(payer: PublicKey, transfer: ParsedTransfer, tokenProgram: PublicKey): void {

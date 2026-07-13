@@ -234,6 +234,7 @@ button.is-busy::before { content: ""; width: 14px; height: 14px; flex: 0 0 auto;
 .copy-chip { display: inline; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: #c5cad1; text-underline-offset: .16em; overflow-wrap: anywhere; }
 .copy-chip:hover { border: 0; background: transparent; color: var(--blue); transform: none; }
 .copy-toast { position: fixed; left: 50%; bottom: 20px; z-index: 1000; transform: translateX(-50%) translateY(8px); padding: 9px 13px; border-radius: 999px; background: rgba(17,24,39,.94); color: #fff; font-size: .7rem; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity .14s ease, transform .14s ease; }
+.copy-toast.error { background: rgba(79, 24, 24, .96); color: #ffb0aa; }
 .copy-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 .footer { display: grid; justify-items: center; padding: 30px 0 0; color: #8d98aa; text-align: center; }

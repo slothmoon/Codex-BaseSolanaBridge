@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { state } from "../shared";
 import {
   beginBusyAction,
+  copyValue,
   initializeRecoveryTx,
   invalidateBurnValidation,
   invalidateClaimStatus,
@@ -16,6 +17,7 @@ const hashA = `0x${"aa".repeat(32)}` as const;
 const hashB = `0x${"bb".repeat(32)}` as const;
 const originalDocument = globalThis.document;
 const originalLocalStorage = globalThis.localStorage;
+const originalNavigator = globalThis.navigator;
 
 function installDocument() {
   const claim = { disabled: false } as HTMLButtonElement;
@@ -42,6 +44,10 @@ afterEach(() => {
     configurable: true,
     value: originalLocalStorage
   });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: originalNavigator
+  });
 });
 
 describe("claim status invalidation", () => {
@@ -59,9 +65,20 @@ describe("claim status invalidation", () => {
       value: { setItem }
     });
 
-    expect(initializeRecoveryTx(hashB, hashA)).toBe(hashB);
+    expect(initializeRecoveryTx(hashB, hashA)).toEqual({ txHash: hashB, canCleanQuery: true });
 
     expect(setItem).toHaveBeenCalledWith("base-solana-bridge:last-base-tx", hashB);
+    expect(txInput.value).toBe(hashB);
+  });
+
+  it("keeps a valid recovery query when durable storage is unavailable", () => {
+    const { txInput } = installDocument();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { setItem: vi.fn(() => { throw new Error("blocked"); }) }
+    });
+
+    expect(initializeRecoveryTx(hashB, hashA)).toEqual({ txHash: hashB, canCleanQuery: false });
     expect(txInput.value).toBe(hashB);
   });
 
@@ -161,18 +178,59 @@ describe("action locking", () => {
   });
 
   it("enables copy buttons created while an action was running", () => {
-    const copyButton = { disabled: true } as HTMLButtonElement;
+    const copyButton = {
+      disabled: true,
+      classList: { contains: (value: string) => value === "copy-chip" }
+    } as unknown as HTMLButtonElement;
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: {
-        querySelectorAll: (selector: string) => selector === ".copy-chip" ? [copyButton] : [],
+        querySelectorAll: (selector: string) => selector === "button" ? [copyButton] : [],
         getElementById: () => null
       }
     });
+    state.actionInFlight = true;
 
     syncBaseActionButtons();
 
     expect(copyButton.disabled).toBe(false);
+  });
+});
+
+describe("copy feedback", () => {
+  it("keeps clipboard failures local and exposes accessible feedback", async () => {
+    const appended: Array<{ textContent: string }> = [];
+    const attributes: Record<string, string> = {};
+    const classes = new Set<string>();
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        getElementById: (id: string) => id === "copyToast" ? appended[0] || null : null,
+        createElement: () => ({
+          id: "",
+          className: "",
+          textContent: "",
+          setAttribute: (name: string, value: string) => { attributes[name] = value; },
+          classList: {
+            add: (value: string) => classes.add(value),
+            remove: (value: string) => classes.delete(value),
+            toggle: (value: string, force: boolean) => force ? classes.add(value) : classes.delete(value)
+          }
+        }),
+        body: { appendChild: (value: { textContent: string }) => { appended.push(value); } }
+      }
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } }
+    });
+    state.actionInFlight = true;
+
+    await expect(copyValue(hashA)).resolves.toBeUndefined();
+    expect(appended[0]?.textContent).toMatch(/copy failed.*denied/i);
+    expect(attributes).toMatchObject({ role: "status", "aria-live": "polite" });
+    expect(classes.has("error")).toBe(true);
+    expect(state.actionInFlight).toBe(true);
   });
 });
 

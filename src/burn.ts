@@ -89,20 +89,26 @@ export async function startBridge(): Promise<void> {
 
   assertBurnInputsUnchanged(validatedBurnKey);
   setStatus("Confirm the burn transaction in your Base wallet.");
-  const txHash = await wallet.sendTransaction({
-    account: evmAccount,
-    to: CONFIG.baseBridge,
-    data: encodeFunctionData({
-      abi: BRIDGE_ABI,
-      functionName: "bridgeToken",
-      args: [transfer, []]
-    }),
-    value: 0n
-  });
-
-  // A submitted burn consumes this validation. Any additional burn must be
-  // reviewed and validated again to avoid accidental duplicate submissions.
+  // Consume validation before crossing the wallet submission boundary. A
+  // provider can fail to return a hash even when submission may have occurred,
+  // so every wallet outcome must require a fresh review before another burn.
   invalidateBurnValidation();
+  let txHash: Hex;
+  try {
+    txHash = await wallet.sendTransaction({
+      account: evmAccount,
+      to: CONFIG.baseBridge,
+      data: encodeFunctionData({
+        abi: BRIDGE_ABI,
+        functionName: "bridgeToken",
+        args: [transfer, []]
+      }),
+      value: 0n
+    });
+  } catch (error) {
+    throw new Error(formatBaseSubmissionFailure(error));
+  }
+
   rememberTx(txHash);
   const baseExplorer = CONFIG.baseChain.blockExplorers?.default.url || "https://basescan.org";
   setLinkedStatus(
@@ -239,6 +245,32 @@ export function validateBridgeAmount(input: {
     throw new Error(`The Solana bridge vault has only ${formatUnits(vaultBalance, decimals)} ${symbol} available.`);
   }
   return amount;
+}
+
+export function formatBaseSubmissionFailure(error: unknown): string {
+  const code = getNestedProviderErrorCode(error);
+  if (code === 4001) {
+    return "Base transaction rejected in the wallet. Nothing was submitted. Validate the route again when you are ready.";
+  }
+  return [
+    "The Base wallet did not return a transaction hash, so submission could not be verified.",
+    "Check your wallet activity before trying again. Do not burn again if the transaction appears there.",
+    `Validate the route again only after confirming no burn was submitted. ${errorMessage(error)}`
+  ].join("\n\n");
+}
+
+function getNestedProviderErrorCode(error: unknown): number | undefined {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current) {
+      const code = Number((current as { code: unknown }).code);
+      if (Number.isFinite(code)) return code;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 function assertBurnInputsUnchanged(expectedKey: string): void {
