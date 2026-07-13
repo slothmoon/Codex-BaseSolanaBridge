@@ -1,8 +1,6 @@
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import {
   createPublicClient,
-  custom,
-  fallback,
   http,
   type Address,
   type Hex
@@ -83,12 +81,8 @@ export const state = {
 };
 
 export function getBaseClient() {
-  const publicRpc = http(CONFIG.baseRpcUrl, { retryCount: 1, retryDelay: 500, timeout: 15_000 });
-  const transport = window.ethereum && state.baseReady
-    ? fallback([custom(window.ethereum), publicRpc], { retryCount: 2, retryDelay: 750 })
-    : publicRpc;
   return createPublicClient({
     chain: CONFIG.baseChain,
-    transport
+    transport: http(CONFIG.baseRpcUrl, { retryCount: 1, retryDelay: 500, timeout: 15_000 })
   });
 }

@@ -386,9 +386,8 @@ export function errorMessage(error: unknown, rpc?: "base" | "solana"): string {
 
   if (rpc === "base") {
     return [
-      "The Base RPC is temporarily rate limited.",
-      "If your Base wallet is not connected, connect it and retry so the page can use the wallet RPC before falling back to the configured public RPC.",
-      "For a public deployment, set VITE_BASE_RPC_URL in Vercel to a browser-compatible production Base RPC URL.",
+      "The configured Base RPC is temporarily rate limited.",
+      "Wait a moment and retry the same action.",
       `RPC details: ${message}`
     ].join("\n\n");
   }
