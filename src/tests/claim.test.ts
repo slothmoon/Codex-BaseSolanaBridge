@@ -195,6 +195,37 @@ describe("Solana wallet submission paths", () => {
     }, "confirmed");
   });
 
+  it("restores expiry metadata omitted by a wallet that preserves the blockhash", async () => {
+    const { payer, transaction } = claimTransaction();
+    const signed = Transaction.from(transaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false
+    }));
+    expect(signed.recentBlockhash).toBe(transaction.recentBlockhash);
+    expect(signed.lastValidBlockHeight).toBeUndefined();
+    signed.partialSign(payer);
+    const localSignature = encodeSolanaSignature(signed.signature!);
+    const confirmTransaction = vi.fn().mockResolvedValue({ value: { err: null } });
+    const connection = {
+      sendRawTransaction: vi.fn().mockResolvedValue(localSignature),
+      confirmTransaction
+    } as unknown as Connection;
+    const provider: SolanaProvider = {
+      connect: vi.fn(),
+      signTransaction: vi.fn().mockResolvedValue(signed)
+    };
+
+    await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toEqual({
+      signature: localSignature,
+      confirmation: { status: "confirmed" }
+    });
+    expect(confirmTransaction).toHaveBeenCalledWith({
+      signature: localSignature,
+      blockhash: transaction.recentBlockhash,
+      lastValidBlockHeight: 1234
+    }, "confirmed");
+  });
+
   it("supports wallets that sign and broadcast themselves", async () => {
     const { transaction } = claimTransaction();
     const connection = {

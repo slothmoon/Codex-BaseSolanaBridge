@@ -214,6 +214,18 @@ export async function sendSolanaTransaction(
       throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
     }
     const localSignature = encodeSolanaSignature(payerSignature);
+    // lastValidBlockHeight is client-side confirmation metadata and is not
+    // serialized into the transaction message. Wallets that reconstruct the
+    // signed Transaction can therefore omit it even while preserving the
+    // original blockhash. Restore the matching expiry context in that case.
+    if (
+      signed.lastValidBlockHeight === undefined
+      && signed.recentBlockhash
+      && signed.recentBlockhash === transaction.recentBlockhash
+      && transaction.lastValidBlockHeight !== undefined
+    ) {
+      signed.lastValidBlockHeight = transaction.lastValidBlockHeight;
+    }
     confirmationTransaction = signed;
 
     try {
