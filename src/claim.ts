@@ -232,7 +232,7 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
     `${result.warning ? `${result.warning}\n\n` : ""}Solana transaction submitted:\n${result.signature}\n\nWait for it to confirm in Explorer, then click Check status. Do not submit another claim while it is pending.`,
     "View on Solana Explorer",
     explorerUrl,
-    "info"
+    "success"
   );
 }
 
