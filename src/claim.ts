@@ -26,7 +26,7 @@ import {
 } from "./ui";
 import { connectSolana, getSolanaProvider } from "./wallets";
 
-const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
+const CLAIM_SOL_BUFFER_LAMPORTS = 500_000n;
 
 export type SolanaSubmissionResult =
   | { status: "submitted"; signature: string; warning?: string }
