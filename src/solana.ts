@@ -368,18 +368,6 @@ export function encodeProveMessage(input: {
   ]);
 }
 
-export function getBlockheightConfirmationStrategy(
-  transaction: Pick<Transaction, "recentBlockhash" | "lastValidBlockHeight">,
-  signature: string
-) {
-  const blockhash = transaction.recentBlockhash;
-  const lastValidBlockHeight = transaction.lastValidBlockHeight;
-  if (!blockhash || lastValidBlockHeight === undefined) {
-    throw new Error("The Solana transaction is missing its blockhash expiry information. Rebuild the claim and retry.");
-  }
-  return { signature, blockhash, lastValidBlockHeight };
-}
-
 function vecU8(bytes: Buffer): Buffer {
   return Buffer.concat([u32Le(bytes.length), bytes]);
 }

@@ -1,16 +1,14 @@
 import { Keypair, PublicKey, Transaction, type Connection } from "@solana/web3.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   additionalRentLamports,
-  applyConfirmationToClaimState,
-  confirmSolanaTransaction,
   encodeSolanaSignature,
   formatUnknownSubmissionMessage,
   getClaimProofAccountSpace,
   sendSolanaTransaction
 } from "../claim";
-import { state, type SolanaProvider } from "../shared";
+import { type SolanaProvider } from "../shared";
 
 function claimTransaction() {
   const payer = Keypair.generate();
@@ -21,164 +19,6 @@ function claimTransaction() {
   });
   return { payer, transaction };
 }
-
-afterEach(() => {
-  state.currentStatus = null;
-});
-
-describe("post-submission claim state", () => {
-  it("marks a confirmed claim as completed", () => {
-    state.currentStatus = {
-      status: "ready_to_claim",
-      humanStatus: "Ready",
-      txHash: `0x${"11".repeat(32)}`
-    };
-
-    applyConfirmationToClaimState({ status: "confirmed" });
-
-    expect(state.currentStatus?.status).toBe("claimed");
-  });
-
-  it("requires a fresh status check when confirmation is unknown", () => {
-    state.currentStatus = {
-      status: "proof_created",
-      humanStatus: "Ready to relay",
-      txHash: `0x${"22".repeat(32)}`
-    };
-
-    applyConfirmationToClaimState({ status: "unknown", error: new Error("timeout") });
-
-    expect(state.currentStatus).toBeNull();
-  });
-
-  it("keeps a failed claim retryable", () => {
-    state.currentStatus = {
-      status: "ready_to_claim",
-      humanStatus: "Ready",
-      txHash: `0x${"33".repeat(32)}`
-    };
-
-    applyConfirmationToClaimState({ status: "failed", reason: "failure" });
-
-    expect(state.currentStatus?.status).toBe("ready_to_claim");
-  });
-});
-
-describe("Solana confirmation outcomes", () => {
-  it("reports a successful confirmation", async () => {
-    const { transaction } = claimTransaction();
-    const getSignatureStatuses = vi.fn();
-    const connection = {
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } }),
-      getSignatureStatuses
-    } as unknown as Connection;
-
-    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-      status: "confirmed"
-    });
-    expect(getSignatureStatuses).not.toHaveBeenCalled();
-  });
-
-  it("reports an on-chain failure with transaction logs", async () => {
-    const { transaction } = claimTransaction();
-    const reason = { InstructionError: [1, { Custom: 6000 }] };
-    const connection = {
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: reason } }),
-      getTransaction: vi.fn().mockResolvedValue({ meta: { logMessages: ["Program log: failed"] } })
-    } as unknown as Connection;
-
-    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-      status: "failed",
-      reason,
-      logs: ["Program log: failed"]
-    });
-  });
-
-  it("keeps the confirmed failure when logs are unavailable", async () => {
-    const { transaction } = claimTransaction();
-    const reason = { InstructionError: [0, "InvalidArgument"] };
-    const connection = {
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: reason } }),
-      getTransaction: vi.fn().mockRejectedValue(new Error("RPC unavailable"))
-    } as unknown as Connection;
-
-    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-      status: "failed",
-      reason,
-      logs: undefined
-    });
-  });
-
-  it.each(["confirmed", "finalized"] as const)(
-    "recovers a %s transaction after confirmation throws",
-    async (confirmationStatus) => {
-      const { transaction } = claimTransaction();
-      const connection = {
-        confirmTransaction: vi.fn().mockRejectedValue(new Error("confirmation timed out")),
-        getSignatureStatuses: vi.fn().mockResolvedValue({
-          value: [{ err: null, confirmationStatus }]
-        })
-      } as unknown as Connection;
-
-      await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-        status: "confirmed"
-      });
-      expect(connection.getSignatureStatuses).toHaveBeenCalledOnce();
-      expect(connection.getSignatureStatuses).toHaveBeenCalledWith(["signature"], {
-        searchTransactionHistory: true
-      });
-    }
-  );
-
-  it("recovers an on-chain failure after confirmation throws", async () => {
-    const { transaction } = claimTransaction();
-    const error = new Error("confirmation timed out");
-    const reason = { InstructionError: [1, { Custom: 6000 }] };
-    const connection = {
-      confirmTransaction: vi.fn().mockRejectedValue(error),
-      getSignatureStatuses: vi.fn().mockResolvedValue({
-        value: [{ err: reason, confirmationStatus: "confirmed" }]
-      })
-    } as unknown as Connection;
-
-    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-      status: "failed",
-      reason,
-      logs: undefined
-    });
-  });
-
-  it.each([null, { err: null, confirmationStatus: "processed" }])(
-    "reports an unknown outcome when the fallback has no confirmed result",
-    async (fallbackStatus) => {
-      const { transaction } = claimTransaction();
-      const error = new Error("confirmation timed out");
-      const connection = {
-        confirmTransaction: vi.fn().mockRejectedValue(error),
-        getSignatureStatuses: vi.fn().mockResolvedValue({ value: [fallbackStatus] })
-      } as unknown as Connection;
-
-      await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-        status: "unknown",
-        error
-      });
-    }
-  );
-
-  it("preserves the confirmation error when the fallback also fails", async () => {
-    const { transaction } = claimTransaction();
-    const error = new Error("confirmation timed out");
-    const connection = {
-      confirmTransaction: vi.fn().mockRejectedValue(error),
-      getSignatureStatuses: vi.fn().mockRejectedValue(new Error("status lookup failed"))
-    } as unknown as Connection;
-
-    await expect(confirmSolanaTransaction(connection, transaction, "signature")).resolves.toEqual({
-      status: "unknown",
-      error
-    });
-  });
-});
 
 describe("Solana wallet submission paths", () => {
   it("derives proof rent from the account path actually used", () => {
@@ -206,10 +46,7 @@ describe("Solana wallet submission paths", () => {
   it("signs locally, broadcasts once, and tracks the canonical signature", async () => {
     const { payer, transaction } = claimTransaction();
     const sendRawTransaction = vi.fn().mockResolvedValue("local-signature");
-    const connection = {
-      sendRawTransaction,
-      confirmTransaction: vi.fn().mockRejectedValue(new Error("confirmation timed out"))
-    } as unknown as Connection;
+    const connection = { sendRawTransaction } as unknown as Connection;
     const provider: SolanaProvider = {
       connect: vi.fn(),
       signTransaction: vi.fn(async (value) => {
@@ -219,9 +56,11 @@ describe("Solana wallet submission paths", () => {
     };
 
     const result = await sendSolanaTransaction(provider, transaction, connection);
-    expect(result.signature).toBe(encodeSolanaSignature(transaction.signature!));
-    expect(result.confirmation.status).toBe("unknown");
-    expect(result.warning).toMatch(/unexpected signature/i);
+    expect(result).toMatchObject({
+      status: "submitted",
+      signature: encodeSolanaSignature(transaction.signature!),
+      warning: expect.stringMatching(/unexpected signature/i)
+    });
     expect(sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 
@@ -252,10 +91,7 @@ describe("Solana wallet submission paths", () => {
     const sendRawTransaction = vi.fn().mockImplementation(async (raw: Buffer | Uint8Array) => {
       return encodeSolanaSignature(Transaction.from(raw).signature!);
     });
-    const connection = {
-      sendRawTransaction,
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } })
-    } as unknown as Connection;
+    const connection = { sendRawTransaction } as unknown as Connection;
     const provider: SolanaProvider = {
       connect: vi.fn(),
       signTransaction: vi.fn(async (value) => {
@@ -266,56 +102,22 @@ describe("Solana wallet submission paths", () => {
     };
 
     await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toMatchObject({
-      confirmation: { status: "confirmed" }
+      status: "submitted"
     });
     expect(sendRawTransaction).toHaveBeenCalledOnce();
   });
 
-  it("uses original expiry metadata when a reconstructed wallet transaction omits it", async () => {
-    const { payer, transaction } = claimTransaction();
-    const signed = Transaction.from(transaction.serialize({
-      requireAllSignatures: false,
-      verifySignatures: false
-    }));
-    expect(signed.recentBlockhash).toBe(transaction.recentBlockhash);
-    expect(signed.lastValidBlockHeight).toBeUndefined();
-    signed.partialSign(payer);
-    const localSignature = encodeSolanaSignature(signed.signature!);
-    const confirmTransaction = vi.fn().mockResolvedValue({ value: { err: null } });
-    const connection = {
-      sendRawTransaction: vi.fn().mockResolvedValue(localSignature),
-      confirmTransaction
-    } as unknown as Connection;
-    const provider: SolanaProvider = {
-      connect: vi.fn(),
-      signTransaction: vi.fn().mockResolvedValue(signed)
-    };
-
-    await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toEqual({
-      signature: localSignature,
-      confirmation: { status: "confirmed" }
-    });
-    expect(confirmTransaction).toHaveBeenCalledWith({
-      signature: localSignature,
-      blockhash: transaction.recentBlockhash,
-      lastValidBlockHeight: 1234
-    }, "confirmed");
-    expect(signed.lastValidBlockHeight).toBeUndefined();
-  });
-
   it("supports wallets that sign and broadcast themselves", async () => {
     const { transaction } = claimTransaction();
-    const connection = {
-      confirmTransaction: vi.fn().mockResolvedValue({ value: { err: null } })
-    } as unknown as Connection;
+    const connection = {} as Connection;
     const provider: SolanaProvider = {
       connect: vi.fn(),
       signAndSendTransaction: vi.fn().mockResolvedValue({ signature: "wallet-signature" })
     };
 
     await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toEqual({
-      signature: "wallet-signature",
-      confirmation: { status: "confirmed" }
+      status: "submitted",
+      signature: "wallet-signature"
     });
   });
 
@@ -334,7 +136,7 @@ describe("Solana wallet submission paths", () => {
 
     const result = await sendSolanaTransaction(provider, transaction, connection);
     expect(result.signature).toBe(encodeSolanaSignature(transaction.signature!));
-    expect(result.confirmation.status).toBe("unknown");
+    expect(result.status).toBe("unknown");
     expect(connection.sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 

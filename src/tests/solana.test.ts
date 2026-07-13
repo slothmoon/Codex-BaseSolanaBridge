@@ -12,7 +12,6 @@ import {
   createRelayInstruction,
   deriveAta,
   encodeProveMessage,
-  getBlockheightConfirmationStrategy,
   getSolanaBridgeState,
   getTokenVaultPda,
   incomingMessageAccountSpace,
@@ -240,20 +239,7 @@ describe("Solana account decoding", () => {
   });
 });
 
-describe("Solana confirmation", () => {
-  it("uses the transaction blockhash expiry strategy", () => {
-    const transaction = new Transaction({
-      feePayer: key(0xa1),
-      blockhash: key(0xa2).toBase58(),
-      lastValidBlockHeight: 1234
-    });
-    expect(getBlockheightConfirmationStrategy(transaction, "signature")).toEqual({
-      signature: "signature",
-      blockhash: key(0xa2).toBase58(),
-      lastValidBlockHeight: 1234
-    });
-  });
-
+describe("Solana transaction building", () => {
   it("builds an ATA plus relay when a proof account already exists", async () => {
     const payer = key(0xb1);
     const mint = key(0xb2);

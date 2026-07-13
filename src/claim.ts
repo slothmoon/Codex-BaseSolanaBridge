@@ -7,7 +7,6 @@ import {
   buildClaimTransaction,
   buildRelayOnlyTransaction,
   classifyIncomingMessageAccount,
-  getBlockheightConfirmationStrategy,
   getOutputRootPda,
   getSolanaBridgeState,
   incomingMessageAccountSpace,
@@ -29,18 +28,9 @@ import { connectSolana, getSolanaProvider } from "./wallets";
 
 const CLAIM_SOL_BUFFER_LAMPORTS = 1_000_000n;
 
-export type SolanaConfirmationOutcome =
-  | { status: "confirmed" }
-  | { status: "failed"; reason: unknown; logs?: string[] | null }
-  | { status: "unknown"; error: unknown };
-
-export type SolanaSubmissionResult = {
-  signature: string;
-  confirmation: SolanaConfirmationOutcome;
-  warning?: string;
-};
-
-type SolanaConfirmationContext = Pick<Transaction, "recentBlockhash" | "lastValidBlockHeight">;
+export type SolanaSubmissionResult =
+  | { status: "submitted"; signature: string; warning?: string }
+  | { status: "unknown"; signature: string; error: unknown };
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -164,48 +154,6 @@ export async function claimOnSolana(): Promise<void> {
   renderSubmissionResult(submission);
 }
 
-export async function confirmSolanaTransaction(
-  connection: Connection,
-  transaction: SolanaConfirmationContext,
-  signature: string
-): Promise<SolanaConfirmationOutcome> {
-  try {
-    const confirmation = await connection.confirmTransaction(
-      getBlockheightConfirmationStrategy(transaction, signature),
-      "confirmed"
-    );
-    if (!confirmation.value.err) return { status: "confirmed" };
-
-    let logs: string[] | null | undefined;
-    try {
-      const result = await connection.getTransaction(signature, {
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0
-      });
-      logs = result?.meta?.logMessages;
-    } catch {
-      // The confirmation result is authoritative even if log retrieval fails.
-    }
-    return { status: "failed", reason: confirmation.value.err, logs };
-  } catch (error) {
-    try {
-      const fallback = await connection.getSignatureStatuses([signature], {
-        searchTransactionHistory: true
-      });
-      const status = fallback.value[0];
-      if (status?.err) {
-        return { status: "failed", reason: status.err, logs: undefined };
-      }
-      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
-        return { status: "confirmed" };
-      }
-    } catch {
-      // Preserve the original confirmation error if the one-shot fallback also fails.
-    }
-    return { status: "unknown", error };
-  }
-}
-
 export async function sendSolanaTransaction(
   provider: SolanaProvider,
   transaction: Transaction,
@@ -213,10 +161,6 @@ export async function sendSolanaTransaction(
 ): Promise<SolanaSubmissionResult> {
   let signature: string;
   let warning: string | undefined;
-  const confirmationContext: SolanaConfirmationContext = {
-    recentBlockhash: transaction.recentBlockhash,
-    lastValidBlockHeight: transaction.lastValidBlockHeight
-  };
 
   if (provider.signTransaction) {
     const expectedFeePayer = transaction.feePayer;
@@ -247,11 +191,9 @@ export async function sendSolanaTransaction(
       }
     } catch (error) {
       return {
+        status: "unknown",
         signature: localSignature,
-        confirmation: {
-          status: "unknown",
-          error: new Error(await formatSolanaError("Solana submission could not be verified", error, connection))
-        }
+        error: new Error(await formatSolanaError("Solana submission could not be verified", error, connection))
       };
     }
   } else if (provider.signAndSendTransaction) {
@@ -265,8 +207,8 @@ export async function sendSolanaTransaction(
   }
 
   return {
+    status: "submitted",
     signature,
-    confirmation: await confirmSolanaTransaction(connection, confirmationContext, signature),
     ...(warning ? { warning } : {})
   };
 }
@@ -274,20 +216,11 @@ export async function sendSolanaTransaction(
 function renderSubmissionResult(result: SolanaSubmissionResult): void {
   const cluster = CONFIG.env === "testnet" ? "?cluster=devnet" : "";
   const explorerUrl = `https://explorer.solana.com/tx/${result.signature}${cluster}`;
+  state.currentStatus = null;
 
-  if (result.confirmation.status === "failed") {
-    throw new Error(formatSolanaFailure(
-      `${result.warning ? `${result.warning}\n\n` : ""}Solana claim failed on-chain. Retry the same Base transaction hash; do not burn again`,
-      result.confirmation.reason,
-      result.confirmation.logs
-    ));
-  }
-
-  applyConfirmationToClaimState(result.confirmation);
-
-  if (result.confirmation.status === "unknown") {
+  if (result.status === "unknown") {
     setLinkedStatus(
-      `${result.warning ? `${result.warning}\n\n` : ""}${formatUnknownSubmissionMessage(result.signature, result.confirmation.error)}`,
+      formatUnknownSubmissionMessage(result.signature, result.error),
       "View on Solana Explorer",
       explorerUrl,
       "info"
@@ -296,22 +229,11 @@ function renderSubmissionResult(result: SolanaSubmissionResult): void {
   }
 
   setLinkedStatus(
-    `${result.warning ? `${result.warning}\n\n` : ""}Claim confirmed on Solana:\n${result.signature}`,
+    `${result.warning ? `${result.warning}\n\n` : ""}Solana transaction submitted:\n${result.signature}\n\nWait for it to confirm in Explorer, then click Check status. Do not submit another claim while it is pending.`,
     "View on Solana Explorer",
-    explorerUrl
+    explorerUrl,
+    "info"
   );
-}
-
-export function applyConfirmationToClaimState(confirmation: SolanaConfirmationOutcome): void {
-  if (confirmation.status === "confirmed" && state.currentStatus) {
-    state.currentStatus = {
-      ...state.currentStatus,
-      status: "claimed",
-      humanStatus: "Claim confirmed on Solana."
-    };
-  } else if (confirmation.status === "unknown") {
-    state.currentStatus = null;
-  }
 }
 
 async function assertEnoughSol(
