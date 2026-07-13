@@ -368,7 +368,10 @@ export function encodeProveMessage(input: {
   ]);
 }
 
-export function getBlockheightConfirmationStrategy(transaction: Transaction, signature: string) {
+export function getBlockheightConfirmationStrategy(
+  transaction: Pick<Transaction, "recentBlockhash" | "lastValidBlockHeight">,
+  signature: string
+) {
   const blockhash = transaction.recentBlockhash;
   const lastValidBlockHeight = transaction.lastValidBlockHeight;
   if (!blockhash || lastValidBlockHeight === undefined) {

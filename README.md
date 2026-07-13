@@ -71,7 +71,7 @@ Anything beginning with `VITE_` is public in the browser bundle. Never put a sec
 This package includes `.env.production` with:
 
 ```bash
-VITE_BASE_RPC_URL=https://base-rpc.publicnode.com
+VITE_BASE_RPC_URL=https://mainnet.base.org
 VITE_SOLANA_RPC_URL=https://solana-rpc.publicnode.com
 ```
 
@@ -81,5 +81,5 @@ These endpoints are compiled into the production `dist` bundle. No Vercel runtim
 
 - Base -> Solana is not instant. The user must wait until validators register a sufficiently recent output root on Solana.
 - The user's Solana wallet pays transaction fees and rent for the per-message proof account, and possibly the ATA. Keep a small SOL buffer available; Token-2022 ATAs may need more rent than ordinary SPL accounts.
-- The default Base public RPC is rate limited and not intended for production. The page first tries the connected Base wallet RPC, then the configured `VITE_BASE_RPC_URL`. For production, configure a browser-compatible provider URL, preferably with domain restrictions.
+- The bundled Base RPC `https://mainnet.base.org` supports the historical `eth_call` required for proof recovery, but it is rate limited. The page first tries the connected Base wallet RPC, then the configured `VITE_BASE_RPC_URL`. Higher-traffic deployments should configure a browser-compatible archive RPC, preferably with domain restrictions; an override without historical state support cannot generate claims from older output roots.
 - The site is intentionally limited to returning official Base-wrapped SPL tokens. It does not support Base-native ERC-20s, ETH, SOL wrappers, arbitrary follow-up instructions, or subsidized relaying.

@@ -165,7 +165,7 @@ describe("Solana wallet submission paths", () => {
     expect(sendRawTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("confirms using the transaction actually returned by the wallet", async () => {
+  it("rejects a wallet-returned transaction with a modified message", async () => {
     const { payer, transaction } = claimTransaction();
     const signed = new Transaction({
       feePayer: payer.publicKey,
@@ -173,29 +173,37 @@ describe("Solana wallet submission paths", () => {
       lastValidBlockHeight: 5678
     });
     signed.partialSign(payer);
-    const localSignature = encodeSolanaSignature(signed.signature!);
-    const confirmTransaction = vi.fn().mockResolvedValue({ value: { err: null } });
+    const sendRawTransaction = vi.fn();
     const connection = {
-      sendRawTransaction: vi.fn().mockResolvedValue(localSignature),
-      confirmTransaction
+      sendRawTransaction
     } as unknown as Connection;
     const provider: SolanaProvider = {
       connect: vi.fn(),
       signTransaction: vi.fn().mockResolvedValue(signed)
     };
 
-    await expect(sendSolanaTransaction(provider, transaction, connection)).resolves.toEqual({
-      signature: localSignature,
-      confirmation: { status: "confirmed" }
-    });
-    expect(confirmTransaction).toHaveBeenCalledWith({
-      signature: localSignature,
-      blockhash: signed.recentBlockhash,
-      lastValidBlockHeight: 5678
-    }, "confirmed");
+    await expect(sendSolanaTransaction(provider, transaction, connection)).rejects.toThrow(/modified transaction/i);
+    expect(sendRawTransaction).not.toHaveBeenCalled();
   });
 
-  it("restores expiry metadata omitted by a wallet that preserves the blockhash", async () => {
+  it("detects an in-place message mutation by the wallet", async () => {
+    const { payer, transaction } = claimTransaction();
+    const sendRawTransaction = vi.fn();
+    const connection = { sendRawTransaction } as unknown as Connection;
+    const provider: SolanaProvider = {
+      connect: vi.fn(),
+      signTransaction: vi.fn(async (value) => {
+        value.recentBlockhash = Keypair.generate().publicKey.toBase58();
+        value.partialSign(payer);
+        return value;
+      })
+    };
+
+    await expect(sendSolanaTransaction(provider, transaction, connection)).rejects.toThrow(/modified transaction/i);
+    expect(sendRawTransaction).not.toHaveBeenCalled();
+  });
+
+  it("uses original expiry metadata when a reconstructed wallet transaction omits it", async () => {
     const { payer, transaction } = claimTransaction();
     const signed = Transaction.from(transaction.serialize({
       requireAllSignatures: false,
@@ -224,6 +232,7 @@ describe("Solana wallet submission paths", () => {
       blockhash: transaction.recentBlockhash,
       lastValidBlockHeight: 1234
     }, "confirmed");
+    expect(signed.lastValidBlockHeight).toBeUndefined();
   });
 
   it("supports wallets that sign and broadcast themselves", async () => {

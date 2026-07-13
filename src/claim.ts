@@ -40,6 +40,8 @@ export type SolanaSubmissionResult = {
   warning?: string;
 };
 
+type SolanaConfirmationContext = Pick<Transaction, "recentBlockhash" | "lastValidBlockHeight">;
+
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 export function encodeSolanaSignature(bytes: Uint8Array): string {
@@ -164,7 +166,7 @@ export async function claimOnSolana(): Promise<void> {
 
 export async function confirmSolanaTransaction(
   connection: Connection,
-  transaction: Transaction,
+  transaction: SolanaConfirmationContext,
   signature: string
 ): Promise<SolanaConfirmationOutcome> {
   try {
@@ -196,16 +198,21 @@ export async function sendSolanaTransaction(
   connection: Connection
 ): Promise<SolanaSubmissionResult> {
   let signature: string;
-  let confirmationTransaction = transaction;
   let warning: string | undefined;
+  const confirmationContext: SolanaConfirmationContext = {
+    recentBlockhash: transaction.recentBlockhash,
+    lastValidBlockHeight: transaction.lastValidBlockHeight
+  };
 
   if (provider.signTransaction) {
+    const expectedMessage = transaction.serializeMessage();
     let signed: Transaction;
     try {
       signed = (await provider.signTransaction(transaction)) || transaction;
     } catch (error) {
       throw new Error(await formatSolanaError("Solana wallet signing failed", error, connection));
     }
+    assertSignedMessageUnchanged(expectedMessage, signed);
     const feePayer = signed.feePayer;
     const payerSignature = feePayer
       ? signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature
@@ -214,19 +221,6 @@ export async function sendSolanaTransaction(
       throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
     }
     const localSignature = encodeSolanaSignature(payerSignature);
-    // lastValidBlockHeight is client-side confirmation metadata and is not
-    // serialized into the transaction message. Wallets that reconstruct the
-    // signed Transaction can therefore omit it even while preserving the
-    // original blockhash. Restore the matching expiry context in that case.
-    if (
-      signed.lastValidBlockHeight === undefined
-      && signed.recentBlockhash
-      && signed.recentBlockhash === transaction.recentBlockhash
-      && transaction.lastValidBlockHeight !== undefined
-    ) {
-      signed.lastValidBlockHeight = transaction.lastValidBlockHeight;
-    }
-    confirmationTransaction = signed;
 
     try {
       const rpcSignature = await connection.sendRawTransaction(signed.serialize(), {
@@ -258,9 +252,19 @@ export async function sendSolanaTransaction(
 
   return {
     signature,
-    confirmation: await confirmSolanaTransaction(connection, confirmationTransaction, signature),
+    confirmation: await confirmSolanaTransaction(connection, confirmationContext, signature),
     ...(warning ? { warning } : {})
   };
+}
+
+function assertSignedMessageUnchanged(expectedMessage: Uint8Array, signed: Transaction): void {
+  const signedMessage = signed.serializeMessage();
+  if (
+    signedMessage.length !== expectedMessage.length
+    || signedMessage.some((byte, index) => byte !== expectedMessage[index])
+  ) {
+    throw new Error("Solana wallet returned a modified transaction. Nothing was submitted; rebuild the claim and retry.");
+  }
 }
 
 function renderSubmissionResult(result: SolanaSubmissionResult): void {
