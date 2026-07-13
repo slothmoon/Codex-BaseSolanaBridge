@@ -119,7 +119,7 @@ export async function claimOnSolana(): Promise<void> {
         blockNumber: bridgeState.baseBlockNumber
       });
     } catch (error) {
-      throw new Error(`Could not generate the historical Base proof. The configured Base RPC may not support historical eth_call. ${errorMessage(error)}`);
+      throw new Error(`Could not generate the historical Base proof. The configured Base RPC may not support historical eth_call. ${errorMessage(error, "base")}`);
     }
 
     ({ transaction, transfer } = await buildClaimTransaction({

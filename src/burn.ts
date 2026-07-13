@@ -74,7 +74,7 @@ export async function startBridge(): Promise<void> {
       value: 0n
     });
   } catch (error) {
-    throw new Error(`Base simulation failed. Nothing was burned. ${errorMessage(error)}`);
+    throw new Error(`Base simulation failed. Nothing was burned. ${errorMessage(error, "base")}`);
   }
   assertBurnInputsUnchanged(validatedBurnKey);
 

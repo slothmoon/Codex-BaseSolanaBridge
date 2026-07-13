@@ -4,6 +4,8 @@ import { state } from "../shared";
 import {
   beginBusyAction,
   copyValue,
+  errorMessage,
+  formatSolanaError,
   initializeRecoveryTx,
   invalidateBurnValidation,
   invalidateClaimStatus,
@@ -231,6 +233,22 @@ describe("copy feedback", () => {
     expect(attributes).toMatchObject({ role: "status", "aria-live": "polite" });
     expect(classes.has("error")).toBe(true);
     expect(state.actionInFlight).toBe(true);
+  });
+});
+
+describe("RPC error attribution", () => {
+  const rateLimitError = new Error("HTTP 429: request rate limit exceeded at https://rpc.example");
+
+  it("keeps generic errors neutral while preserving Base RPC details", () => {
+    expect(errorMessage(rateLimitError)).toBe(rateLimitError.message);
+    expect(errorMessage(rateLimitError, "base")).toMatch(/Base RPC[\s\S]*RPC details:[\s\S]*HTTP 429/);
+  });
+
+  it("labels Solana rate limits without rewriting them as Base errors", async () => {
+    const message = await formatSolanaError("Could not simulate the Solana claim", rateLimitError, {});
+
+    expect(message).toMatch(/Solana RPC or wallet provider[\s\S]*RPC details:[\s\S]*HTTP 429/);
+    expect(message).not.toMatch(/Base RPC/);
   });
 });
 

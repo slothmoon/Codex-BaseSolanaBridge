@@ -380,16 +380,24 @@ function isCopyButton(button: HTMLButtonElement): boolean {
   return button.classList?.contains?.("copy-chip") ?? false;
 }
 
-export function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown, rpc?: "base" | "solana"): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/over rate limit|rate limit|too many requests|\b429\b/i.test(message)) {
+  if (!rpc || !/over rate limit|rate limit|too many requests|\b429\b/i.test(message)) return message;
+
+  if (rpc === "base") {
     return [
-      "The Base RPC is temporarily rate limited. No transaction was submitted and no tokens moved.",
-      "Connect your Base wallet and retry so the page can use the wallet RPC.",
-      "For a public deployment, set VITE_BASE_RPC_URL in Vercel to a browser-compatible production Base RPC URL."
-    ].join("\n");
+      "The Base RPC is temporarily rate limited.",
+      "If your Base wallet is not connected, connect it and retry so the page can use the wallet RPC before falling back to the configured public RPC.",
+      "For a public deployment, set VITE_BASE_RPC_URL in Vercel to a browser-compatible production Base RPC URL.",
+      `RPC details: ${message}`
+    ].join("\n\n");
   }
-  return message;
+
+  return [
+    "The Solana RPC or wallet provider is temporarily rate limited.",
+    "Wait a moment and retry the same action. If submission may have occurred, click Check status before submitting again.",
+    `RPC details: ${message}`
+  ].join("\n\n");
 }
 
 export function formatSolanaFailure(prefix: string, reason: unknown, logs?: string[] | null): string {
@@ -411,8 +419,9 @@ export async function formatSolanaError(prefix: string, error: unknown, getLogsC
       // Keep the original wallet or RPC error if log retrieval also fails.
     }
   }
-  const friendly = getFriendlySolanaError(logs, errorMessage(error));
-  return `${friendly ? `${friendly}\n\n` : ""}${prefix}: ${errorMessage(error)}${formatLogs(logs)}`;
+  const rawMessage = errorMessage(error);
+  const friendly = getFriendlySolanaError(logs, rawMessage);
+  return `${friendly ? `${friendly}\n\n` : ""}${prefix}: ${errorMessage(error, "solana")}${formatLogs(logs)}`;
 }
 
 export function lamportsToSol(value: bigint): string {
