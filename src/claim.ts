@@ -219,18 +219,18 @@ export async function sendSolanaTransaction(
   };
 
   if (provider.signTransaction) {
-    const expectedMessage = transaction.serializeMessage();
+    const expectedFeePayer = transaction.feePayer;
     let signed: Transaction;
     try {
       signed = (await provider.signTransaction(transaction)) || transaction;
     } catch (error) {
       throw new Error(await formatSolanaError("Solana wallet signing failed", error, connection));
     }
-    assertSignedMessageUnchanged(expectedMessage, signed);
     const feePayer = signed.feePayer;
-    const payerSignature = feePayer
-      ? signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature
-      : null;
+    if (!expectedFeePayer || !feePayer || !feePayer.equals(expectedFeePayer)) {
+      throw new Error("Solana wallet returned a transaction with an unexpected fee payer. Nothing was submitted.");
+    }
+    const payerSignature = signed.signatures.find(({ publicKey }) => publicKey.equals(feePayer))?.signature;
     if (!payerSignature) {
       throw new Error("Solana wallet did not sign the transaction. Nothing was submitted.");
     }
@@ -269,16 +269,6 @@ export async function sendSolanaTransaction(
     confirmation: await confirmSolanaTransaction(connection, confirmationContext, signature),
     ...(warning ? { warning } : {})
   };
-}
-
-function assertSignedMessageUnchanged(expectedMessage: Uint8Array, signed: Transaction): void {
-  const signedMessage = signed.serializeMessage();
-  if (
-    signedMessage.length !== expectedMessage.length
-    || signedMessage.some((byte, index) => byte !== expectedMessage[index])
-  ) {
-    throw new Error("Solana wallet returned a modified transaction. Nothing was submitted; rebuild the claim and retry.");
-  }
 }
 
 function renderSubmissionResult(result: SolanaSubmissionResult): void {
