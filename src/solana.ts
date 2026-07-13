@@ -22,7 +22,9 @@ const OUTPUT_ROOT_SEED = Buffer.from("output_root");
 const INCOMING_MESSAGE_SEED = Buffer.from("incoming_message");
 const BRIDGE_SEED = Buffer.from("bridge");
 const TOKEN_VAULT_SEED = Buffer.from("token_vault");
+const BRIDGE_PAUSED_OFFSET = 8 + 8 + 8 + 32;
 const BRIDGE_PROTOCOL_CONFIG_OFFSET = 8 + 8 + 8 + 32 + 1 + 56 + 56;
+const BRIDGE_DISCRIMINATOR = Buffer.from([231, 232, 31, 98, 110, 3, 23, 59]);
 const PROVE_MESSAGE_DISCRIMINATOR = Buffer.from([172, 66, 78, 136, 158, 187, 47, 115]);
 const RELAY_MESSAGE_DISCRIMINATOR = Buffer.from([187, 90, 182, 138, 51, 248, 175, 98]);
 const INCOMING_MESSAGE_DISCRIMINATOR = Buffer.from([30, 144, 125, 111, 211, 223, 91, 170]);
@@ -96,18 +98,29 @@ export function getTokenVaultPda(programId: string, mint: PublicKey, remoteToken
 }
 
 export async function getSolanaBridgeState(connection: Connection, programId: string): Promise<BridgeState> {
+  const program = new PublicKey(programId);
   const bridge = getBridgePda(programId);
   const account = await connection.getAccountInfo(bridge, "confirmed");
   if (!account) throw new Error("The Solana bridge state account was not found.");
+  if (!account.owner.equals(program)) {
+    throw new Error(`The Solana bridge state account is owned by unexpected program ${account.owner.toBase58()}.`);
+  }
   if (account.data.length < BRIDGE_PROTOCOL_CONFIG_OFFSET + 8) {
     throw new Error("The Solana bridge state account has an unexpected layout.");
   }
 
   const data = Buffer.from(account.data);
+  if (!data.subarray(0, BRIDGE_DISCRIMINATOR.length).equals(BRIDGE_DISCRIMINATOR)) {
+    throw new Error("The Solana bridge state account has an unexpected discriminator.");
+  }
+  const pausedByte = data[BRIDGE_PAUSED_OFFSET];
+  if (pausedByte !== 0 && pausedByte !== 1) {
+    throw new Error("The Solana bridge state account has an invalid paused flag.");
+  }
   return {
     bridge,
     baseBlockNumber: data.readBigUInt64LE(8),
-    paused: data[8 + 8 + 8 + 32] === 1,
+    paused: pausedByte === 1,
     blockIntervalRequirement: data.readBigUInt64LE(BRIDGE_PROTOCOL_CONFIG_OFFSET)
   };
 }

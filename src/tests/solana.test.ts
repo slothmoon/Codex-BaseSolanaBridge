@@ -27,6 +27,15 @@ function accountInfo(data: Buffer, owner: PublicKey) {
   return { data, owner, executable: false, lamports: 1, rentEpoch: 0 };
 }
 
+function bridgeAccountData(length = 177, paused = 0): Buffer {
+  const data = Buffer.alloc(length);
+  Buffer.from([231, 232, 31, 98, 110, 3, 23, 59]).copy(data);
+  data.writeBigUInt64LE(900n, 8);
+  data[56] = paused;
+  data.writeBigUInt64LE(300n, 169);
+  return data;
+}
+
 describe("Base-to-Solana message encoding", () => {
   it("parses the official plain SPL-transfer layout", () => {
     const bytes = Buffer.alloc(98);
@@ -114,10 +123,7 @@ describe("Solana instruction and account parity", () => {
 
 describe("Solana account decoding", () => {
   it("reads the current Bridge account offsets", async () => {
-    const data = Buffer.alloc(200);
-    data.writeBigUInt64LE(900n, 8);
-    data[56] = 1;
-    data.writeBigUInt64LE(300n, 169);
+    const data = bridgeAccountData(200, 1);
     const connection = {
       getAccountInfo: async () => accountInfo(data, key(0x80))
     } as unknown as Connection;
@@ -129,9 +135,7 @@ describe("Solana account decoding", () => {
   });
 
   it("accepts the exact minimum Bridge account length", async () => {
-    const data = Buffer.alloc(177);
-    data.writeBigUInt64LE(900n, 8);
-    data.writeBigUInt64LE(300n, 169);
+    const data = bridgeAccountData();
     const connection = {
       getAccountInfo: async () => accountInfo(data, key(0x80))
     } as unknown as Connection;
@@ -140,6 +144,26 @@ describe("Solana account decoding", () => {
       baseBlockNumber: 900n,
       blockIntervalRequirement: 300n
     });
+  });
+
+  it("rejects a Bridge account with the wrong owner, discriminator, or paused flag", async () => {
+    const program = key(0x80);
+    const wrongOwnerConnection = {
+      getAccountInfo: async () => accountInfo(bridgeAccountData(), key(0x81))
+    } as unknown as Connection;
+    await expect(getSolanaBridgeState(wrongOwnerConnection, program.toBase58())).rejects.toThrow(/unexpected program/i);
+
+    const wrongDiscriminator = bridgeAccountData();
+    wrongDiscriminator[0] ^= 0xff;
+    const wrongDiscriminatorConnection = {
+      getAccountInfo: async () => accountInfo(wrongDiscriminator, program)
+    } as unknown as Connection;
+    await expect(getSolanaBridgeState(wrongDiscriminatorConnection, program.toBase58())).rejects.toThrow(/discriminator/i);
+
+    const invalidPausedConnection = {
+      getAccountInfo: async () => accountInfo(bridgeAccountData(177, 2), program)
+    } as unknown as Connection;
+    await expect(getSolanaBridgeState(invalidPausedConnection, program.toBase58())).rejects.toThrow(/paused flag/i);
   });
 
   it("decodes and validates the bridge vault base layout", async () => {
