@@ -1,29 +1,40 @@
 {
-  "name": "base-solana-spl-return",
-  "version": "1.0.1",
+  "name": "base-solana-return",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
+  "description": "Static, non-custodial interface for returning Base-wrapped Solana assets (SPL tokens and SOL) to Solana.",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --project unit",
+    "test:svm": "vitest run --project svm",
+    "test:live": "vitest run --project live",
+    "test:all": "vitest run"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.98.0",
-    "buffer": "^6.0.3",
-    "viem": "^2.38.0"
-  },
-  "overrides": {
-    "uuid": "11.1.1",
-    "ws": "8.21.0"
+    "@preact/signals": "^2.11.2",
+    "@solana-program/compute-budget": "^0.19.0",
+    "@solana-program/token": "^0.17.0",
+    "@solana/kit": "^8.3.0",
+    "@solana/wallet-standard-features": "^1.5.0",
+    "@wallet-standard/app": "^1.1.1",
+    "@wallet-standard/base": "^1.1.1",
+    "@wallet-standard/features": "^1.1.1",
+    "preact": "^10.29.8",
+    "viem": "^2.56.9"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "@testing-library/preact": "^3.2.4",
+    "happy-dom": "^20.14.5",
+    "litesvm": "^1.4.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
   }
 }

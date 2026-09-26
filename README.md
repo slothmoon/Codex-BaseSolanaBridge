@@ -1,86 +1,84 @@
-# Base -> Solana SPL Return Bridge
+# Return to Solana — v2
 
-A fully static, non-custodial web interface for users returning official Base-wrapped SPL tokens to their original Solana mint.
+A static, non-custodial web app for moving **Base-wrapped Solana assets back to Solana** through the official [Base–Solana bridge](https://docs.base.org/base-chain/quickstart/base-solana-bridge): SPL tokens (Standard and Token-2022) and native SOL.
 
-There is no backend, database, relayer key, or server process. The browser reads Base and Solana RPC endpoints, validates the route, generates the MMR proof, constructs the Solana transaction, and asks the user's wallets to sign.
+There is no backend, database or relayer key. The browser reads public Base and Solana RPCs, checks the route, generates and **verifies** the proof locally, builds every transaction, and asks your wallets to sign.
 
-## What users provide
+## How a return works
 
-- A connected Base wallet to validate and submit the burn
-- A connected Solana wallet for the destination and claim
-- The official Base wrapped-SPL token address
-- The amount to return
+1. **Burn on Base.** You burn the official wrapper with `Bridge.bridgeToken`. The destination is fixed at this point: your Solana wallet's token account (SPL) or your wallet itself (SOL).
+2. **Wait for an output root.** Once the Base block containing your burn is finalized (~20 min) and an output root covering it is registered on Solana (roots sit at every 300th Base block), the message becomes provable.
+3. **Claim on Solana.** Base → Solana has no automatic relay: someone must submit the claim. The app proves the message against that root (`prove_message`) and releases the funds (`relay_message`). Any wallet can pay for the claim; the funds always go to the recipient fixed at burn time.
 
-The page automatically discovers the original SPL mint, detects Standard SPL Token or Token-2022, derives the destination ATA, and creates the ATA idempotently during the claim when needed.
+On recent mainnet returns, the covering root arrived 21–34 minutes after the burn.
 
-## Safety checks before the Base burn
+Paste any burn transaction hash into **Track & claim** to see where it is. The hash is all you need to recover a claim, from any browser.
 
-The page refuses to submit unless:
+## Safety checks
 
-- The Base address contains contract code
-- The official CrossChainERC20Factory returns `true` from `isCrossChainErc20(wrapper)`
-- The wrapper authorizes the configured official Base bridge
-- The configured Solana bridge is not paused
-- The remote Solana mint exists
-- The mint is owned by Standard SPL Token or Token-2022
-- Base wrapper decimals match Solana mint decimals
-- The derived bridge vault exists and matches the mint and token program
-- The user's Base balance and bridge-vault balance cover the amount
-- `Bridge.bridgeToken(...)` succeeds in an `eth_call` simulation
+Before the burn button is enabled, all of these must pass:
 
-For Token-2022 mints, the page detects the Token-2022 program owner and shows a warning to try a small amount first. Support can vary by token behavior and bridge-program behavior, so the UI does not claim every Token-2022 token is fully supported.
+- The token is from the official `CrossChainERC20Factory` and is bound to the official Base bridge.
+- Neither side of the bridge is paused.
+- The Solana mint exists, uses SPL Token or Token-2022, and has the same decimals as the wrapper.
+- The bridge vault exists, matches the mint, isn't frozen, and holds enough to release. For SOL, releasing the amount must also leave the vault rent-exempt.
+- **Token-2022 features are inspected.** The app blocks mints whose claim would fail after your burn: a transfer hook, non-transferable, paused, or new accounts frozen by default. It warns about transfer fees (and shows what you'll actually receive), permanent delegates, and UI amount scaling.
+- Your existing destination account isn't frozen and doesn't require incoming-transfer memos.
+- For SOL, an empty recipient wallet gets at least Solana's minimum account balance.
+- The exact `bridgeToken` call succeeds in an `eth_call` simulation from your address.
 
-The **Burn on Base** button remains disabled until all checks pass. Changing the wrapper address, amount, Base wallet, or Solana wallet invalidates validation and disables the button again.
+The review is tied to a key made from every input (token, amount, both wallets). Change anything and the review is discarded; the route is re-validated again right before the wallet prompt.
 
-The Base transaction hash is saved to browser local storage. Users can also paste any prior burn transaction hash manually.
-Status checks and Solana claims do not require a connected Base wallet; the configured public Base RPC provides the read-only proof data needed for recovery.
+## What's new in v2
 
-## Local development
+| Area | v1 | v2 |
+|---|---|---|
+| Claim size | One legacy transaction; fails once a proof exceeds 17 nodes (common for late claims) | One 4 KB v1 transaction when the wallet supports it; otherwise a prove/release split, or the official buffered prove path for any proof size |
+| Proof safety | Sent unchecked | Verified locally against the on-chain output root before any signature |
+| Priority fees | None | 75th-percentile recent fee for the touched accounts, clamped; compute limit sized from simulation |
+| Assets | SPL only | SPL, Token-2022 (with extension checks) and native SOL; tracks and claims wrapped-token transfers too |
+| Claim payer | Must be the recipient | Any wallet can pay; the funds still go to the fixed recipient |
+| Wallets | `window.ethereum` / `window.solana` | EIP-6963 (pick among installed EVM wallets) and Wallet Standard (Phantom, Solflare, Backpack, …) |
+| Wallet tampering | Checked fee payer only | Verifies the payer signature, and that every bridge instruction is still present byte-for-byte if the wallet edited the transaction |
+| Interrupted claims | Restart | Resumes from on-chain state (including a half-uploaded proof buffer); leftover buffers are closed for their rent |
+| RPC resilience | Single endpoint | Ordered fallbacks for Base and Solana; separate archive endpoint for proofs |
+| Status | Manual refresh | Auto-polling, ETA from Base finality, clear reverted/not-found/not-a-bridge states, local history of your burns |
+| Upgrades | Silent | Warns if the Base contracts or Solana program changed since this interface was verified |
+| Stack | Vanilla DOM, web3.js v1 | Preact + signals, `@solana/kit` (~1/4 the Solana bundle size), viem |
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-For testnet, copy `.env.example` to `.env` and set:
+| Command | What it does |
+|---|---|
+| `npm test` | Offline unit tests (IDL parity, real mainnet payloads/proofs/accounts, planner, executor, UI) |
+| `npm run test:svm` | Runs every claim strategy against the **real mainnet program binary** in LiteSVM, with accounts cloned from mainnet (Linux/macOS; needs network) |
+| `npm run test:live` | Read-only mainnet checks: deployment pins, real wrappers, proof verification, and simulations of real relays and buffer instructions |
+| `npm run typecheck` / `npm run build` | Strict TypeScript / production bundle |
 
-```bash
-VITE_BRIDGE_ENV=testnet
-```
+`tests/fixtures/bridge.idl.json` is the official program IDL (commit in `bridge.idl.commit`). `tests/fixtures/mainnet.json` is a snapshot of real mainnet data; regenerate it with `CAPTURE_FIXTURES=1 npx vitest run --project live capture-fixtures`.
 
-## Deploy to Vercel
+## Configuration
 
-1. In Vercel, import the GitHub repository.
-2. Use the production branch `main`.
-3. Framework preset: **Vite**.
-4. Build command: `npm run build`.
-5. Build output directory: `dist`.
-6. No serverless functions, database, or secret runtime variables are required.
-7. Deploy.
+Copy `.env.example` to `.env`. Every `VITE_` variable is public in the bundle — never put secrets there.
 
-Vercel will build and redeploy the static site whenever `main` is pushed.
+- `VITE_BRIDGE_ENV` — `mainnet` (default) or `testnet` (Base Sepolia → Solana devnet).
+- `VITE_BASE_RPC_URL`, `VITE_SOLANA_RPC_URL` — preferred endpoints, tried before the public defaults.
+- `VITE_BASE_ARCHIVE_RPC_URL` — archive-capable Base endpoint for historical `eth_call` (proofs). High-traffic deployments should set domain-restricted endpoints.
 
-Optional build variables:
+When the bridge is upgraded, re-verify and update `NETWORK.pins` in `src/config.ts` (the daily CI `live` job fails when they drift).
 
-- `VITE_BRIDGE_ENV=mainnet` or `testnet`
-- `VITE_BASE_RPC_URL=<browser-compatible Base RPC>`
-- `VITE_SOLANA_RPC_URL=<browser-compatible Solana RPC>`
+## Deploy (Vercel)
 
-Anything beginning with `VITE_` is public in the browser bundle. Never put a secret or unrestricted paid RPC key there.
+Import the repository, use the **Vite** preset, build command `npm run build`, output `dist`. `vercel.json` sets a strict CSP (no inline scripts or styles, `connect-src` https only) and immutable caching for hashed assets. No server functions or secrets are needed.
 
-This package includes `.env.production` with:
+## Scope and limits
 
-```bash
-VITE_BASE_RPC_URL=https://mainnet.base.org
-VITE_SOLANA_RPC_URL=https://solana-rpc.publicnode.com
-```
-
-These endpoints are compiled into the production `dist` bundle. No Vercel runtime variables are needed unless you want to override them.
-
-## Important operational notes
-
-- Base -> Solana is not instant. The user must wait until validators register a sufficiently recent output root on Solana.
-- After the Solana RPC accepts a claim, the page shows the transaction signature immediately. This means submitted, not finalized; **Check status** reads the bridge account for the authoritative claim outcome.
-- The user's Solana wallet pays transaction fees and rent for the per-message proof account, and possibly the ATA. Keep a small SOL buffer available; Token-2022 ATAs may need more rent than ordinary SPL accounts.
-- The bundled Base RPC `https://mainnet.base.org` supports the historical `eth_call` required for proof recovery, but it is rate limited. The configured `VITE_BASE_RPC_URL` is used for all Base reads and simulations; the connected Base wallet is used only for network/account access and submitting the burn. Higher-traffic deployments should configure a browser-compatible archive RPC, preferably with domain restrictions; an override without historical state support cannot generate claims from older output roots.
-- The site is intentionally limited to returning official Base-wrapped SPL tokens. It does not support Base-native ERC-20s, ETH, SOL wrappers, arbitrary follow-up instructions, or subsidized relaying.
+- Returns only official Base-wrapped Solana assets. It does not bridge Base-native ERC-20s or ETH to Solana, and does not attach follow-up Solana instructions.
+- Transfers that carry extra Solana instructions, or cross-chain calls, are tracked but not claimed here.
+- The claim fee payer needs a little SOL for fees and rent: the proof account, plus the token account if it doesn't exist. A proof buffer deposit, if used, is refunded.
+- Not affiliated with Base or Coinbase. Use at your own risk.
