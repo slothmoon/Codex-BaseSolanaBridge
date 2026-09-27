@@ -119,4 +119,19 @@ describe("app shell", () => {
     state.solanaAccount.value = { address: "11111111111111111111111111111111", publicKey: new Uint8Array(32), chains: [], features: [] } as WalletAccount;
     expect(state.activeRoute.value).toBeNull();
   });
+
+  it("keeps the user on a transfer while its claim is running", async () => {
+    const { TrackCard } = await import("../../src/ui/TrackCard");
+    const state = await import("../../src/state/app");
+    state.history.value = [{ txHash: `0x${"a".repeat(64)}`, createdAt: Date.now(), symbol: "SOL", amount: "1" }];
+    state.trackInput.value = `0x${"b".repeat(64)}`;
+    state.claimRun.value = { status: "loading" };
+    render(<TrackCard />);
+    // A disabled submit button also blocks Enter in the hash box (browsers don't submit the form).
+    expect((screen.getByRole("button", { name: "Track" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /1 SOL/ }) as HTMLButtonElement).disabled).toBe(true);
+
+    state.claimRun.value = { status: "idle" }; // once the claim finishes, tracking works again
+    expect(((await screen.findByRole("button", { name: "Track" })) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

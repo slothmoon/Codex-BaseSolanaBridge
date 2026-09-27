@@ -192,7 +192,8 @@ input::placeholder { color: var(--text-2); opacity: 0.8; }
 .history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .history li { display: flex; align-items: center; gap: 4px; }
 .history-item { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; text-align: left; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-size: 14px; }
-.history-item:hover { border-color: var(--border-strong); }
+.history-item:hover:not(:disabled) { border-color: var(--border-strong); }
+.history-item:disabled { cursor: not-allowed; opacity: 0.55; }
 .history-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 420px) { .history-item { grid-template-columns: 1fr auto; } .history-item span:last-child { display: none; } }
 

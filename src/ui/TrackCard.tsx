@@ -20,6 +20,8 @@ import { ErrorNotice, Icon, Mono, Notice, Row, Spinner } from "./components";
 import { formatAmount, formatDuration, formatSol, timeAgo } from "./format";
 
 export function TrackCard() {
+  // While a claim is running, stay on its transfer: tracking something else is disabled until it finishes.
+  const claiming = claimRun.value.status === "loading";
   return (
     <section class="card" aria-labelledby="track-title">
       <header class="card-header">
@@ -47,7 +49,7 @@ export function TrackCard() {
             spellcheck={false}
             autocomplete="off"
           />
-          <button type="submit" class="button button-secondary" disabled={tracked.value.status === "loading"}>
+          <button type="submit" class="button button-secondary" disabled={tracked.value.status === "loading" || claiming}>
             Track
           </button>
         </div>
@@ -59,7 +61,7 @@ export function TrackCard() {
         {tracked.value.status === "ready" && <StatusView status={tracked.value.value} />}
       </div>
 
-      <HistoryList />
+      <HistoryList disabled={claiming} />
     </section>
   );
 }
@@ -266,7 +268,7 @@ function phaseLabel(phase: string): string {
   return { simulating: "Checking…", signing: "Approve in your wallet", sending: "Sending…", confirming: "Confirming…", confirmed: "Done" }[phase] ?? phase;
 }
 
-function HistoryList() {
+function HistoryList({ disabled }: { disabled: boolean }) {
   if (history.value.length === 0) return null;
   return (
     <div class="history">
@@ -275,7 +277,7 @@ function HistoryList() {
       <ul>
         {history.value.map((entry) => (
           <li key={entry.txHash}>
-            <button type="button" class="history-item" onClick={() => void track(entry.txHash)}>
+            <button type="button" class="history-item" disabled={disabled} onClick={() => void track(entry.txHash)}>
               <span>{entry.amount ? `${entry.amount} ${entry.symbol ?? ""}` : "Return"}</span>
               <code>{entry.txHash.slice(0, 10)}…</code>
               <span class="muted">{timeAgo(entry.createdAt)}</span>

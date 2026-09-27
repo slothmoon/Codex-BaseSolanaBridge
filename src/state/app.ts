@@ -331,7 +331,6 @@ export async function runClaim(): Promise<void> {
       signer: toSolanaSigner(wallet.wallet, account),
       rpc: getSolanaRpc(),
       onProgress: (progress) => {
-        if (!isShown(prep.status.txHash)) return;
         const list = claimProgress.value.filter((item) => item.index !== progress.index);
         claimProgress.value = [...list, progress].sort((a, b) => a.index - b.index);
       }
@@ -340,7 +339,8 @@ export async function runClaim(): Promise<void> {
   } catch (error) {
     if (isShown(prep.status.txHash)) claimRun.value = failed(error);
   } finally {
-    // If another transaction was tracked meanwhile, the claim finishes quietly; tracking this one again shows it.
+    // Track is disabled during a claim, but a burn still moves the card to its own transaction. If that
+    // happened, the claim finishes quietly; tracking this one again shows it.
     if (isShown(prep.status.txHash)) {
       claimPrep.value = idle;
       await track(prep.status.txHash, true);
