@@ -37,8 +37,8 @@ export type ClaimPlan = {
 /**
  * Chooses how to submit a claim. Everything uses standard v0 transactions — one transaction when it
  * fits, otherwise "prove" then "release", the pattern used by real mainnet claims. Only when a proof
- * is too large even for that (22+ nodes, which only happens for claims made long after the burn once the bridge has carried many messages) does it
- * fall back to one large v1 transaction, if the wallet supports them.
+ * is too large even for that (22+ nodes, which only happens for claims made long after the burn on a
+ * busy bridge) does it fall back to one large v1 transaction, if the wallet supports them.
  */
 export function planClaim(inputs: ClaimInputs, options: { supportsV1: boolean }): ClaimPlan {
   const { program, payer, bridge, incomingMessage } = inputs;

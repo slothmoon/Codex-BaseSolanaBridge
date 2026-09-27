@@ -59,10 +59,6 @@ describe("claim planning", () => {
     expect(seen.split.at(-1)).toBe(21);
   });
 
-  it("covers the audit's failing case: 18-node proofs no longer break the claim", async () => {
-    for (const length of [17, 18, 21]) checkPlan(planClaim(await inputs(length), { supportsV1: false }));
-  });
-
   it("falls back to one v1 transaction only for proofs too large for v0", async () => {
     for (const length of [22, 24, 40]) {
       const plan = planClaim(await inputs(length), { supportsV1: true });

@@ -5,18 +5,18 @@ import { describe, expect, it } from "vitest";
 import { buildRoute } from "../../src/core/route";
 import { rehearseRelease } from "../../src/core/rehearsal";
 import { decodeMint } from "../../src/protocol/accounts";
-import { concatBytes, u64le } from "../../src/protocol/bytes";
+import { u64le } from "../../src/protocol/bytes";
 import { SYSTEM_PROGRAM } from "../../src/protocol/constants";
 import { findSolVaultPda } from "../../src/protocol/instructions";
 import { TOKEN_2022_WARNING } from "../../src/core/route";
 import { mainnet, program } from "../helpers";
 
-/** A minimal initialized mint (82-byte base, padded to 165, account type 1). */
+/** A minimal initialized mint with 6 decimals. */
 function mintWith(): Uint8Array {
-  const base = new Uint8Array(165);
-  base[44] = 6; // decimals
-  base[45] = 1; // initialized
-  return concatBytes(base, [1]);
+  const data = new Uint8Array(82);
+  data[44] = 6; // decimals
+  data[45] = 1; // initialized
+  return data;
 }
 
 // ---------------------------------------------------------------------------------------------
