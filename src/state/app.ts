@@ -258,6 +258,9 @@ export const claimProgress = signal<ClaimProgress[]>([]);
 export const claimRun = signal<Async<{ signatures: string[] }>>(idle);
 
 let trackRequest = 0;
+/** The transaction the Track card is about (even while it reloads), so late results for another one are dropped. */
+let shownHash: string | null = null;
+const isShown = (hash: Hex) => shownHash === hash.toLowerCase();
 
 /**
  * Looks up a transfer once. There is no auto-refresh: the user clicks Track to check again.
@@ -268,9 +271,11 @@ export async function track(input?: string, quiet = false): Promise<void> {
   try {
     hash = parseTxHash(input ?? trackInput.value);
   } catch (error) {
+    shownHash = null;
     tracked.value = failed(error);
     return;
   }
+  shownHash = hash.toLowerCase();
   const request = ++trackRequest;
   const current = tracked.value;
   const sameTx = current.status === "ready" && current.value.txHash.toLowerCase() === hash.toLowerCase();
@@ -305,13 +310,12 @@ export async function reviewClaim(): Promise<void> {
   claimRun.value = idle;
   claimProgress.value = [];
   // Preparing takes a few seconds; if another transaction was tracked meanwhile, drop the result.
-  const stillShown = () => tracked.value.status === "ready" && tracked.value.value.txHash.toLowerCase() === status.txHash.toLowerCase();
   try {
     const signer = toSolanaSigner(wallet.wallet, account);
     const prepared = await prepareClaim({ status, payer: signer.address, supportsV1: signer.supportsV1, rpc: getSolanaRpc(), base: getBaseClient() });
-    if (stillShown()) claimPrep.value = { status: "ready", value: prepared };
+    if (isShown(status.txHash)) claimPrep.value = { status: "ready", value: prepared };
   } catch (error) {
-    if (stillShown()) claimPrep.value = failed(error);
+    if (isShown(status.txHash)) claimPrep.value = failed(error);
   }
 }
 
@@ -332,12 +336,15 @@ export async function runClaim(): Promise<void> {
         claimProgress.value = [...list, progress].sort((a, b) => a.index - b.index);
       }
     });
-    claimRun.value = { status: "ready", value: result };
+    if (isShown(prep.status.txHash)) claimRun.value = { status: "ready", value: result };
   } catch (error) {
-    claimRun.value = failed(error);
+    if (isShown(prep.status.txHash)) claimRun.value = failed(error);
   } finally {
-    claimPrep.value = idle;
-    await track(prep.status.txHash, true);
+    // If another transaction was tracked meanwhile, the claim finishes quietly; tracking this one again shows it.
+    if (isShown(prep.status.txHash)) {
+      claimPrep.value = idle;
+      await track(prep.status.txHash, true);
+    }
   }
 }
 
