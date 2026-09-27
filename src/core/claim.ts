@@ -194,7 +194,6 @@ export async function executeClaim(input: {
   rpc: SolanaRpc;
   onProgress: (progress: ClaimProgress) => void;
   isAlreadyClaimed: () => Promise<boolean>;
-  signal?: AbortSignal;
 }): Promise<{ signatures: string[]; alreadyClaimed: boolean }> {
   const { prepared, signer, rpc } = input;
   if (signer.address !== prepared.payer) throw new UserFacingError("The connected Solana wallet changed. Review the claim again.");
@@ -251,7 +250,7 @@ export async function executeClaim(input: {
     }
 
     report("confirming", signature);
-    const outcome = await waitForSignature(rpc, signature, BigInt(latest.lastValidBlockHeight), { signal: input.signal, resend: () => sendWireTransaction(rpc, wire, false) });
+    const outcome = await waitForSignature(rpc, signature, BigInt(latest.lastValidBlockHeight), { resend: () => sendWireTransaction(rpc, wire, false) });
     if (outcome.status === "expired") {
       throw new UserFacingError(`"${tx.label}" did not land before its blockhash expired. Nothing was lost — review the claim again to continue where it stopped.`);
     }

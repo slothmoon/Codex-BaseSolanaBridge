@@ -18,12 +18,13 @@ Paste any burn transaction hash into **Track & claim** to see where it is. The h
 
 Before the burn button is enabled, all of these must pass:
 
-- The token was created by the Base bridge factory (`CrossChainERC20Factory`) and is bound to the official Base bridge. Anyone can use that factory, so this proves the token is a real bridge wrapper, not which project it belongs to — the vault balance shows what this wrapper can actually release.
+- The token was created by the Base bridge factory (`CrossChainERC20Factory`). Anyone can use that factory, so this proves the token is a real bridge wrapper, not which project it belongs to — the vault balance shows what this wrapper can actually release.
 - Neither side of the bridge is paused.
 - The Solana mint exists, uses SPL Token or Token-2022, and has the same decimals as the wrapper.
-- The bridge vault exists, matches the mint, and holds enough to release. For SOL, releasing the amount must also leave the vault rent-exempt, and an empty recipient wallet must receive at least Solana's minimum account balance.
+- The bridge vault exists and holds enough to release. For SOL, releasing the amount must also leave the vault rent-exempt, and an empty recipient wallet must receive at least Solana's minimum account balance.
 - **The release is dry-run before you burn.** The app simulates exactly what the claim will do on Solana — create your token account if needed, then `transfer_checked` out of the bridge vault, signed by the vault itself (SOL: a transfer out of the SOL vault) — with signature checks off and the bridge's own SOL vault paying. The token program decides the outcome, so transfer hooks, pauses, frozen accounts, memo requirements, non-transferable mints and any future Token-2022 feature are covered without this app having to recognise them. The amount shown as "You receive" is what the dry run actually delivered, so transfer fees are measured, not estimated.
 - The exact `bridgeToken` call succeeds in an `eth_call` simulation from your address.
+- If your Solana wallet holds less SOL than the claim will cost (fees plus account rent), a warning says so. It doesn't block the burn: you can add SOL before claiming.
 
 **Token-2022 tokens show a warning** (as in v1): their extensions can charge transfer fees, change the amount received, or prevent the Solana claim, so test with a small amount first and confirm it arrives before burning the rest.
 
@@ -67,13 +68,10 @@ npm run dev
 
 Copy `.env.example` to `.env`. Every `VITE_` variable is public in the bundle — never put secrets there.
 
-- `VITE_BRIDGE_ENV` — `mainnet` (default) or `testnet` (Base Sepolia → Solana devnet).
 - `VITE_BASE_RPC_URL`, `VITE_SOLANA_RPC_URL` — preferred endpoints, tried before the public defaults.
 - `VITE_BASE_ARCHIVE_RPC_URL` — archive-capable Base endpoint for historical `eth_call` (proofs). High-traffic deployments should set domain-restricted endpoints.
 
 If Base announces a bridge upgrade, follow their instructions and run `npm run test:live` to confirm this app still works against it.
-
-The testnet configuration (Base Sepolia → Solana devnet) mirrors v1 and has not been exercised against V2.
 
 ## Deploy (Vercel)
 

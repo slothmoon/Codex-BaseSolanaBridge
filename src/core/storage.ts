@@ -1,12 +1,10 @@
 import { isHash, type Hex } from "viem";
 
-import { NETWORK } from "../config";
-
 // Browser storage is a convenience only: every read is validated and every failure is ignored, so the
 // app works the same in private windows or when storage is blocked. Nothing here is needed to recover
 // funds — the Base transaction hash is always enough.
 
-const PREFIX = `base-solana-return:v2:${NETWORK.id}`;
+const PREFIX = "base-solana-return:v2:mainnet";
 
 function read<T>(key: string, fallback: T): T {
   try {

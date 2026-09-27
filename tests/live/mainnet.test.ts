@@ -31,7 +31,7 @@ async function simulate(version: TxVersion, instructions: Instruction[], feePaye
   return value;
 }
 
-describe.runIf(NETWORK.id === "mainnet")("live mainnet", () => {
+describe("live mainnet", () => {
   it("inspects real official wrappers with no blocking findings", async () => {
     for (const token of [NETWORK.base.solWrapper, "0x97bE14Dd8f994A5364573BC035D85309E7CB34de"]) {
       const inspection = await inspectToken({ token, holder: null, base, rpc });

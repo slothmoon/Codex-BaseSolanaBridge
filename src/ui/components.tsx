@@ -32,7 +32,7 @@ export function Spinner({ label }: { label?: string }) {
   );
 }
 
-export function CopyButton({ value, label }: { value: string; label?: string }) {
+export function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -43,7 +43,7 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
     <button
       type="button"
       class="icon-button"
-      aria-label={copied ? "Copied" : `Copy ${label ?? value}`}
+      aria-label={copied ? "Copied" : `Copy ${value}`}
       title={copied ? "Copied" : "Copy"}
       onClick={() => {
         navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined);

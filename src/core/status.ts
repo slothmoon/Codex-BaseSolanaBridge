@@ -9,7 +9,7 @@ import { SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/c
 import { findBridgePda, findIncomingMessagePda } from "../protocol/instructions";
 import { decodeBridgeMessage, type BridgeMessage, type BridgeTransfer } from "../protocol/message";
 
-export type TrackedAsset = { symbol: string; decimals: number; tokenProgram: Address | null };
+export type TrackedAsset = { symbol: string; decimals: number };
 
 export type TrackedCommon = {
   txHash: Hex;
@@ -132,7 +132,7 @@ function readExecuted(account: { owner: Address; data: Uint8Array } | null, mess
 }
 
 async function describeAsset(transfer: BridgeTransfer, base: PublicClient, rpc: SolanaRpc): Promise<TrackedAsset> {
-  if (transfer.kind === "sol") return { symbol: "SOL", decimals: 9, tokenProgram: null };
+  if (transfer.kind === "sol") return { symbol: "SOL", decimals: 9 };
 
   const [mintAccount] = await fetchAccounts(rpc, [transfer.mint]);
   if (!mintAccount) throw new Error(`The Solana mint ${transfer.mint} was not found.`);
@@ -146,5 +146,5 @@ async function describeAsset(transfer: BridgeTransfer, base: PublicClient, rpc: 
       .readContract({ address: transfer.baseToken, abi: ERC20_WRAPPER_ABI, functionName: "symbol" })
       .catch(() => "");
   }
-  return { symbol: symbol || "tokens", decimals, tokenProgram: mintAccount.owner };
+  return { symbol: symbol || "tokens", decimals };
 }

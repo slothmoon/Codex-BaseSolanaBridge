@@ -19,13 +19,6 @@ function mintWith(): Uint8Array {
   return concatBytes(base, [1]);
 }
 
-describe("Token-2022 warning", () => {
-  it("is a simple small-amount-first warning, never a blocker", () => {
-    expect(TOKEN_2022_WARNING).toMatchObject({ level: "warn", code: "token-2022" });
-    expect(TOKEN_2022_WARNING.message).toMatch(/test with a small amount first/);
-  });
-});
-
 // ---------------------------------------------------------------------------------------------
 // Release dry run, with a fake RPC that records the simulated transaction
 // ---------------------------------------------------------------------------------------------
@@ -125,11 +118,19 @@ describe("route check uses the dry run", () => {
     expect(result.findings.find((finding) => finding.code === "release-dry-run")).toMatchObject({ level: "block", message: expect.stringMatching(/Transfer is disabled for this mint/) });
   });
 
+  const funded = { [recipient]: new Uint8Array() }; // holds enough SOL to pay for the claim
+
   it("uses the dry run's received amount and warns when a fee is taken", async () => {
-    const { rpc } = fakeRpc({ simulate: () => ({ err: null, post: tokenAccount(990_000n) }) });
+    const { rpc } = fakeRpc({ existing: funded, simulate: () => ({ err: null, post: tokenAccount(990_000n) }) });
     const result = await route(rpc, true);
     expect(result.expectedReceived).toBe(990_000n);
     expect(result.findings.map((finding) => finding.code)).toEqual(["token-2022", "release-shortfall"]);
     expect(result.findings.every((finding) => finding.level === "warn")).toBe(true);
+  });
+
+  it("warns, without blocking, when the Solana wallet can't pay for the claim", async () => {
+    const { rpc } = fakeRpc({ simulate: () => ({ err: null, post: tokenAccount(1_000_000n) }) });
+    const result = await route(rpc);
+    expect(result.findings).toEqual([expect.objectContaining({ level: "warn", code: "claim-fee", message: expect.stringMatching(/has 0 SOL.*add some SOL/) })]);
   });
 });

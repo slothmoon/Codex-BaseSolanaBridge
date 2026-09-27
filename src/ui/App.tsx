@@ -1,4 +1,3 @@
-import { NETWORK } from "../config";
 import { walletError } from "../state/app";
 import { Notice } from "./components";
 import { ReturnCard } from "./ReturnCard";
@@ -16,7 +15,7 @@ export function App() {
           </svg>
           <span>Base <span class="muted">→</span> Solana</span>
         </a>
-        <span class={`network-pill ${NETWORK.id === "mainnet" ? "" : "is-testnet"}`}>{NETWORK.id === "mainnet" ? "Mainnet" : "Testnet"}</span>
+        <span class="network-pill">Mainnet</span>
         <WalletBar />
       </header>
 

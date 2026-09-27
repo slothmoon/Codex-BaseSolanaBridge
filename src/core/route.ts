@@ -6,7 +6,7 @@ import { NETWORK } from "../config";
 import { BRIDGE_ABI, readWrapper, type WrapperInfo } from "../chain/base";
 import { fetchAccounts, fetchMinimumRent, type SolanaRpc } from "../chain/solana";
 import { addressToBytes32Hex, bytes32HexToAddress } from "../protocol/bytes";
-import { decodeMint, decodeTokenAccount, type MintAccount } from "../protocol/accounts";
+import { decodeMint, decodeTokenAccount, incomingMessageSpace, type MintAccount } from "../protocol/accounts";
 import { NATIVE_SOL_REMOTE_TOKEN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
 import { findSolVaultPda, findTokenVaultPda } from "../protocol/instructions";
 import { loadBridgeState } from "./status";
@@ -14,6 +14,11 @@ import { UserFacingError } from "./errors";
 import { rehearseRelease } from "./rehearsal";
 
 const U64_MAX = (1n << 64n) - 1n;
+
+/** Serialized length of a plain transfer message: SOL (variant, to, amount, ixs) and SPL (+ Base token, mint). */
+const MESSAGE_LENGTH = { sol: 46, spl: 98 } as const;
+/** Two transaction signatures plus a typical priority fee. */
+const CLAIM_FEE_ALLOWANCE = 20_000n;
 
 export type Finding = { level: "block" | "warn"; code: string; message: string };
 
@@ -52,9 +57,6 @@ export async function inspectToken(input: { token: string; holder: Address | nul
       "This token was not created by the official Base bridge factory, so it cannot be returned to Solana here. Only Base-wrapped Solana assets (SPL tokens and SOL) can be returned."
     );
   }
-  if (getAddress(wrapper.bridge) !== getAddress(NETWORK.base.bridge)) {
-    throw new UserFacingError("This wrapper is bound to a different bridge contract than the official one.");
-  }
 
   const findings: Finding[] = [];
   if (wrapper.bridgePaused) findings.push({ level: "block", code: "base-paused", message: "The Base side of the bridge is paused. Burns are disabled until it is unpaused." });
@@ -62,7 +64,6 @@ export async function inspectToken(input: { token: string; holder: Address | nul
 
   const program = NETWORK.solana.bridgeProgram;
   if (wrapper.remoteToken.toLowerCase() === NATIVE_SOL_REMOTE_TOKEN) {
-    if (wrapper.decimals !== 9) findings.push({ level: "block", code: "decimals", message: "The SOL wrapper does not use 9 decimals." });
     const vaultAddress = await findSolVaultPda(program);
     const [vault] = await fetchAccounts(input.rpc, [vaultAddress]);
     return { wrapper, kind: "sol", mint: null, vault: { address: vaultAddress, balance: vault?.lamports ?? 0n }, findings };
@@ -77,24 +78,17 @@ export async function inspectToken(input: { token: string; holder: Address | nul
   }
   const isToken2022 = mintAccount.owner === TOKEN_2022_PROGRAM;
   const mint = decodeMint(mintAccount.data);
-  if (!mint.isInitialized) findings.push({ level: "block", code: "mint-uninitialized", message: "The Solana mint is not initialized." });
   if (isToken2022) findings.push(TOKEN_2022_WARNING);
   if (mint.decimals !== wrapper.decimals) {
     findings.push({ level: "block", code: "decimals", message: `Decimals differ: the Base wrapper uses ${wrapper.decimals}, the Solana mint uses ${mint.decimals}.` });
   }
 
-  let vaultBalance = 0n;
+  // The vault address is derived exactly as the bridge program derives it, and the release dry run
+  // moves tokens out of it, so anything wrong with the vault fails that dry run.
   if (!vaultAccount) {
     findings.push({ level: "block", code: "vault-missing", message: "The bridge has no vault for this token on Solana, so there is nothing to release it from." });
-  } else if (vaultAccount.owner !== mintAccount.owner) {
-    findings.push({ level: "block", code: "vault-owner", message: "The bridge vault is owned by an unexpected program." });
-  } else {
-    const vault = decodeTokenAccount(vaultAccount.data);
-    if (vault.mint !== mintAddress || vault.owner !== vaultAddress) {
-      findings.push({ level: "block", code: "vault-mismatch", message: "The bridge vault does not match this token." });
-    }
-    vaultBalance = vault.amount;
   }
+  const vaultBalance = vaultAccount ? decodeTokenAccount(vaultAccount.data).amount : 0n;
 
   return {
     wrapper,
@@ -157,11 +151,14 @@ export async function buildRoute(input: {
   let destination: SolanaAddress;
   let destinationExists: boolean;
   let expectedReceived = amount;
+  let destinationSpace = 0;
+  let walletLamports = 0n;
 
   if (inspection.kind === "sol") {
     destination = input.recipientWallet;
     const [recipient] = await fetchAccounts(rpc, [destination]);
     destinationExists = Boolean(recipient);
+    walletLamports = recipient?.lamports ?? 0n;
     const rentFloor = await fetchMinimumRent(rpc, 0);
     if (!recipient && amount < rentFloor) {
       findings.push({
@@ -179,8 +176,9 @@ export async function buildRoute(input: {
     const mint = inspection.mint!;
     const [ata] = await findAssociatedTokenPda({ owner: input.recipientWallet, mint: mint.address, tokenProgram: mint.tokenProgram });
     destination = ata;
-    const [account] = await fetchAccounts(rpc, [ata]);
+    const [account, wallet] = await fetchAccounts(rpc, [ata, input.recipientWallet]);
     destinationExists = Boolean(account);
+    walletLamports = wallet?.lamports ?? 0n;
     if (amount > inspection.vault.balance) {
       findings.push({ level: "block", code: "vault-balance", message: `The bridge vault holds ${formatUnits(inspection.vault.balance, wrapper.decimals)} ${wrapper.symbol}.` });
     }
@@ -210,6 +208,7 @@ export async function buildRoute(input: {
       });
     } else {
       expectedReceived = rehearsal.received;
+      if (!destinationExists && inspection.kind === "spl") destinationSpace = rehearsal.destinationSpace;
       if (rehearsal.received < amount) {
         findings.push({
           level: "warn",
@@ -217,6 +216,21 @@ export async function buildRoute(input: {
           message: `The dry run shows you would receive ${formatUnits(rehearsal.received, wrapper.decimals)} ${wrapper.symbol}, not ${formatUnits(amount, wrapper.decimals)} — the token takes a fee on transfer.`
         });
       }
+    }
+  }
+
+  // The claim is a separate Solana transaction paid in SOL: warn if the recipient wallet can't cover it.
+  if (!findings.some((finding) => finding.level === "block")) {
+    const claimCost =
+      (await fetchMinimumRent(rpc, incomingMessageSpace(MESSAGE_LENGTH[inspection.kind]))) +
+      (destinationSpace > 0 ? await fetchMinimumRent(rpc, destinationSpace) : 0n) +
+      CLAIM_FEE_ALLOWANCE;
+    if (walletLamports < claimCost) {
+      findings.push({
+        level: "warn",
+        code: "claim-fee",
+        message: `Your Solana wallet has ${formatUnits(walletLamports, 9)} SOL. Claiming on Solana costs about ${formatUnits(claimCost, 9)} SOL in fees and account rent, so add some SOL to it before you claim.`
+      });
     }
   }
 

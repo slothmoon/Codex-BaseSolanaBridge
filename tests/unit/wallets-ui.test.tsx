@@ -59,7 +59,7 @@ describe("Solana wallet discovery (Wallet Standard)", () => {
   it("only offers wallets that can sign transactions on this cluster", () => {
     expect(isUsableWallet(fakeSolanaWallet())).toBe(true);
     expect(isUsableWallet(fakeSolanaWallet({ sign: false }))).toBe(false);
-    expect(isUsableWallet(fakeSolanaWallet({ chains: ["solana:devnet"] }))).toBe(NETWORK.solana.chain === "solana:devnet");
+    expect(isUsableWallet(fakeSolanaWallet({ chains: ["solana:devnet"] }))).toBe(false);
   });
 
   it("discovers registered wallets", () => {

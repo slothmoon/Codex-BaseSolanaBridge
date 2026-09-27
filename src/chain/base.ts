@@ -15,7 +15,6 @@ import { NETWORK } from "../config";
 
 export const ERC20_WRAPPER_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
-  "function bridge() view returns (address)",
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)",
   "function name() view returns (string)",
@@ -97,7 +96,6 @@ export type WrapperInfo = {
   decimals: number;
   symbol: string;
   name: string;
-  bridge: Address;
   balance: bigint | null;
   bridgePaused: boolean;
 };
@@ -114,22 +112,21 @@ export async function readWrapper(client: PublicClient, token: Address, holder: 
     ]
   });
   if (!official) {
-    return { address: token, official: false, remoteToken: "0x", decimals: 0, symbol: "", name: "", bridge: "0x0000000000000000000000000000000000000000", balance: null, bridgePaused };
+    return { address: token, official: false, remoteToken: "0x", decimals: 0, symbol: "", name: "", balance: null, bridgePaused };
   }
 
   const wrapper = { address: token, abi: ERC20_WRAPPER_ABI } as const;
-  const [remoteToken, decimals, symbol, name, bridge, balance] = await client.multicall({
+  const [remoteToken, decimals, symbol, name, balance] = await client.multicall({
     allowFailure: false,
     contracts: [
       { ...wrapper, functionName: "remoteToken" },
       { ...wrapper, functionName: "decimals" },
       { ...wrapper, functionName: "symbol" },
       { ...wrapper, functionName: "name" },
-      { ...wrapper, functionName: "bridge" },
       { ...wrapper, functionName: "balanceOf", args: [holder ?? "0x0000000000000000000000000000000000000000"] }
     ]
   });
-  return { address: token, official: true, remoteToken, decimals, symbol, name, bridge: getAddress(bridge), balance: holder ? balance : null, bridgePaused };
+  return { address: token, official: true, remoteToken, decimals, symbol, name, balance: holder ? balance : null, bridgePaused };
 }
 
 export type BridgeEvent = { messageHash: Hex; nonce: bigint; sender: Hex; data: Hex };

@@ -71,11 +71,10 @@ export async function waitForSignature(
   rpc: SolanaRpc,
   signature: Signature,
   lastValidBlockHeight: bigint,
-  options: { intervalMs?: number; signal?: AbortSignal; resend?: () => Promise<void> } = {}
+  options: { intervalMs?: number; resend?: () => Promise<void> } = {}
 ): Promise<SignatureOutcome> {
   const interval = options.intervalMs ?? 1500;
   for (let attempt = 0; ; attempt++) {
-    if (options.signal?.aborted) throw new Error("Cancelled.");
     const { value } = await rpc.getSignatureStatuses([signature], { searchTransactionHistory: false }).send();
     const status = value[0];
     if (status?.err) return { status: "failed", error: status.err };
