@@ -72,7 +72,7 @@ function StatusView({ status }: { status: TrackStatus }) {
         <Notice tone={waited > 120_000 ? "warn" : "info"} title="Transaction not found on Base yet">
           {waited > 120_000
             ? "Still nothing after a couple of minutes. Check the hash for typos and make sure it is a Base transaction."
-            : "If you just submitted it, it can take a few seconds to appear. This checks again automatically."}
+            : "If you just submitted it, it can take a few seconds to appear. Click Track to check again."}
         </Notice>
       );
     }
@@ -148,14 +148,14 @@ function TransferView({ status }: { status: TrackedTransfer & { state: "waiting-
       </ol>
 
       {claimRun.value.status === "ready" && (
-        <Notice tone="success" title={claimRun.value.value.alreadyClaimed ? "Someone else completed the claim" : "Claim complete"}>
+        <Notice tone="success" title="Claim complete">
           {claimRun.value.value.signatures.map((signature) => <div key={signature}><Mono value={signature} href={solanaExplorerTx(signature)} /></div>)}
         </Notice>
       )}
 
       {paused && <Notice tone="warn" title="The Solana side of the bridge is paused">Your funds are safe. Claiming resumes when the bridge is unpaused.</Notice>}
       {status.state === "waiting-for-root" && !paused && (
-        <p class="muted small">The claim unlocks once Base finalizes your burn and an output root covering it reaches Solana, typically 20–35 minutes after the burn. This page checks automatically.</p>
+        <p class="muted small">The claim unlocks once Base finalizes your burn and an output root covering it reaches Solana, typically 20–35 minutes after the burn. Click Track to check again.</p>
       )}
 
       {(status.state === "ready" || status.state === "proven") && !paused && <ClaimPanel recipientKnown={status.recipientWallet !== null} />}

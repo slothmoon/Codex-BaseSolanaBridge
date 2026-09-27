@@ -255,11 +255,14 @@ export const history = signal<HistoryEntry[]>(loadHistory());
 
 export const claimPrep = signal<Async<PreparedClaim>>(idle);
 export const claimProgress = signal<ClaimProgress[]>([]);
-export const claimRun = signal<Async<{ signatures: string[]; alreadyClaimed: boolean }>>(idle);
+export const claimRun = signal<Async<{ signatures: string[] }>>(idle);
 
 let trackRequest = 0;
-let pollTimer: number | null = null;
 
+/**
+ * Looks up a transfer once. There is no auto-refresh: the user clicks Track to check again.
+ * `quiet` refreshes the transfer already on screen without a loading flash (used after a claim).
+ */
 export async function track(input?: string, quiet = false): Promise<void> {
   let hash: Hex;
   try {
@@ -277,29 +280,16 @@ export async function track(input?: string, quiet = false): Promise<void> {
     claimRun.value = idle;
     claimProgress.value = [];
   }
-  trackInput.value = hash;
+  if (!quiet) trackInput.value = hash;
   if (!quiet || !sameTx) tracked.value = loading;
   try {
     const status = await trackTransaction({ txHash: hash, base: getBaseClient(), rpc: getSolanaRpc() });
     if (request !== trackRequest) return;
     tracked.value = { status: "ready", value: status };
-    schedulePoll(status);
   } catch (error) {
     if (request !== trackRequest) return;
     if (!quiet || tracked.value.status !== "ready") tracked.value = failed(error);
-    schedulePoll(null);
   }
-}
-
-function schedulePoll(status: TrackStatus | null): void {
-  if (pollTimer !== null) window.clearTimeout(pollTimer);
-  pollTimer = null;
-  const live = !status || ["not-found", "waiting-for-root", "ready", "proven"].includes(status.state);
-  if (!live || claimRun.value.status === "loading") return;
-  pollTimer = window.setTimeout(() => {
-    if (document.visibilityState === "visible") void track(trackInput.value, true);
-    else schedulePoll(status);
-  }, status?.state === "not-found" ? 6_000 : 20_000);
 }
 
 export function removeFromHistory(hash: Hex): void {
@@ -328,7 +318,6 @@ export async function runClaim(): Promise<void> {
   const account = solanaAccount.value;
   const wallet = solanaWallet.value;
   if (!prep || !account || !wallet) return;
-  if (pollTimer !== null) window.clearTimeout(pollTimer);
   claimRun.value = loading;
   claimProgress.value = [];
   try {
@@ -339,10 +328,6 @@ export async function runClaim(): Promise<void> {
       onProgress: (progress) => {
         const list = claimProgress.value.filter((item) => item.index !== progress.index);
         claimProgress.value = [...list, progress].sort((a, b) => a.index - b.index);
-      },
-      isAlreadyClaimed: async () => {
-        const status = await trackTransaction({ txHash: prep.status.txHash, base: getBaseClient(), rpc: getSolanaRpc() });
-        return status.state === "claimed";
       }
     });
     claimRun.value = { status: "ready", value: result };

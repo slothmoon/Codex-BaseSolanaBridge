@@ -87,7 +87,7 @@ function friendlyBridgeError(name: string): string | undefined {
       return "This message has already been claimed.";
     case "InvalidProof":
     case "InvalidMessageHash":
-      return "The proof did not match the output root on Solana. Refresh the status and try again.";
+      return "The proof did not match the output root on Solana. Click Track to refresh the status, then try again.";
     default:
       return undefined;
   }
@@ -106,7 +106,7 @@ export function explainLogs(logs?: readonly string[] | null): string | undefined
   }
   const insufficient = logs.find((line) => /insufficient lamports/i.test(line));
   if (insufficient) return "Your Solana wallet does not have enough SOL for fees and account rent. Add a little SOL and try again.";
-  if (logs.some((line) => /already in use/i.test(line))) return "The proof account already exists. Refresh the status; the message may already be proven or claimed.";
+  if (logs.some((line) => /already in use/i.test(line))) return "The proof account already exists. Click Track to refresh the status; the message may already be proven or claimed.";
   return undefined;
 }
 

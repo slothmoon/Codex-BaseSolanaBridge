@@ -136,6 +136,7 @@ input::placeholder { color: var(--text-2); opacity: 0.8; }
 .review h3, .claim-panel h4 { font-size: 15px; }
 .token-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .token-title strong { font-size: 17px; }
+.token-title > * { min-width: 0; overflow-wrap: anywhere; }
 
 .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
 .pill .icon { width: 13px; height: 13px; }

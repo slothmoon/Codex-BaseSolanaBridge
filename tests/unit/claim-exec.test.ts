@@ -85,8 +85,8 @@ const prepared = (payer: Address, plan: ClaimPlan): PreparedClaim => ({
   cost: { networkFees: 0n, newAccountRent: 0n, required: 0n, balance: 10n ** 9n }
 });
 
-const run = (plan: ClaimPlan, signer: SolanaSigner, payer: Address, rpc: SolanaRpc, isAlreadyClaimed = async () => false) =>
-  executeClaim({ prepared: prepared(payer, plan), signer, rpc, onProgress: () => undefined, isAlreadyClaimed });
+const run = (plan: ClaimPlan, signer: SolanaSigner, payer: Address, rpc: SolanaRpc) =>
+  executeClaim({ prepared: prepared(payer, plan), signer, rpc, onProgress: () => undefined });
 
 describe("claim execution", () => {
   it("simulates, right-sizes compute, signs and confirms each transaction in order", async () => {
@@ -95,7 +95,7 @@ describe("claim execution", () => {
     expect(plan.strategy).toBe("split");
     const { rpc, sent } = fakeRpc();
     const progress: string[] = [];
-    const result = await executeClaim({ prepared: prepared(keys.address, plan), signer: walletFor(keys), rpc, onProgress: (p) => progress.push(`${p.index}:${p.phase}`), isAlreadyClaimed: async () => false });
+    const result = await executeClaim({ prepared: prepared(keys.address, plan), signer: walletFor(keys), rpc, onProgress: (p) => progress.push(`${p.index}:${p.phase}`) });
     expect(result.signatures).toHaveLength(2);
     expect(sent).toHaveLength(2);
     expect(progress).toEqual(["0:simulating", "0:signing", "0:sending", "0:confirming", "0:confirmed", "1:simulating", "1:signing", "1:sending", "1:confirming", "1:confirmed"]);
@@ -120,15 +120,7 @@ describe("claim execution", () => {
       const message = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(tx.messageBytes));
       return compileTransaction(appendTransactionMessageInstruction(getSetComputeUnitPriceInstruction({ microLamports: 1n }), message as never) as never) as Transaction;
     });
-    await expect(run(await planFor(keys.address, 4), addsFee, keys.address, rpc)).resolves.toMatchObject({ alreadyClaimed: false });
-    expect(sent).toHaveLength(1);
-  });
-
-  it("stops when someone else completes the claim midway", async () => {
-    const keys = await generateKeyPairSigner();
-    const { rpc, sent } = fakeRpc();
-    const result = await run(await planFor(keys.address, 20), walletFor(keys), keys.address, rpc, async () => true);
-    expect(result).toEqual({ signatures: [expect.any(String)], alreadyClaimed: true });
+    await expect(run(await planFor(keys.address, 4), addsFee, keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
     expect(sent).toHaveLength(1);
   });
 

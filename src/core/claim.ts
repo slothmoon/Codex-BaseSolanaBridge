@@ -66,7 +66,7 @@ export async function prepareClaim(input: {
     const rootBlock = status.bridge.baseBlockNumber;
     const outputRoot = await findOutputRootPda(program, rootBlock);
     const [outputRootAccount, incomingAccount] = await fetchAccounts(rpc, [outputRoot, status.incomingMessage]);
-    if (!outputRootAccount || outputRootAccount.owner !== program) throw new UserFacingError("The Solana output root for this claim was not found. Refresh the status and try again.");
+    if (!outputRootAccount || outputRootAccount.owner !== program) throw new UserFacingError("The Solana output root for this claim was not found. Click Track to refresh the status, then try again.");
     const root = decodeOutputRoot(outputRootAccount.data);
     if (incomingAccount?.owner === SYSTEM_PROGRAM) incomingLamports = incomingAccount.lamports;
 
@@ -77,7 +77,7 @@ export async function prepareClaim(input: {
       throw new UserFacingError("Could not generate the proof on Base. Try again in a moment.", String((error as Error)?.message ?? error));
     }
     if (!verifyMmrProof({ root: root.root, leafHash: status.event.messageHash, leafIndex: status.event.nonce, proof, totalLeafCount: root.totalLeafCount })) {
-      throw new UserFacingError("The proof from Base does not match the output root on Solana, so nothing was sent. Refresh and try again.");
+      throw new UserFacingError("The proof from Base does not match the output root on Solana, so nothing was sent. Click Track to refresh the status, then try again.");
     }
     proofState = { kind: "unproven", outputRoot, proof };
   }
@@ -186,15 +186,15 @@ export type ClaimProgress = {
 
 /**
  * Runs the plan one transaction at a time: simulate, right-size compute, sign, send, confirm.
- * Every step is resumable from on-chain state, so "Claim" again after any interruption continues.
+ * Each transaction is simulated before signing, so a claim someone else already finished stops with
+ * "already claimed" and nothing is sent. Every step is resumable from on-chain state.
  */
 export async function executeClaim(input: {
   prepared: PreparedClaim;
   signer: SolanaSigner;
   rpc: SolanaRpc;
   onProgress: (progress: ClaimProgress) => void;
-  isAlreadyClaimed: () => Promise<boolean>;
-}): Promise<{ signatures: string[]; alreadyClaimed: boolean }> {
+}): Promise<{ signatures: string[] }> {
   const { prepared, signer, rpc } = input;
   if (signer.address !== prepared.payer) throw new UserFacingError("The connected Solana wallet changed. Review the claim again.");
   const { plan } = prepared;
@@ -202,7 +202,6 @@ export async function executeClaim(input: {
 
   for (const [index, tx] of plan.txs.entries()) {
     const report = (phase: ClaimProgress["phase"], signature?: string) => input.onProgress({ index, total: plan.txs.length, label: tx.label, phase, signature });
-    if (index > 0 && (await input.isAlreadyClaimed())) return { signatures, alreadyClaimed: true };
 
     report("simulating");
     const { value: latest } = await rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
@@ -260,7 +259,7 @@ export async function executeClaim(input: {
     signatures.push(signature);
     report("confirmed", signature);
   }
-  return { signatures, alreadyClaimed: false };
+  return { signatures };
 }
 
 /** Program of each compiled instruction, so an `InstructionError` index can be attributed exactly. */
