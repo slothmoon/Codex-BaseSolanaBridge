@@ -56,6 +56,7 @@ describe("live mainnet", () => {
     const [account] = await fetchAccounts(rpc, [await findOutputRootPda(NETWORK.solana.bridgeProgram, bridge.account.baseBlockNumber)]);
     const root = decodeOutputRoot(account!.data);
     for (const fixture of mainnet.messages) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000)); // stay under the public Base RPC's rate limit
       const proof = await generateProof(getBaseClient(), BigInt(fixture.nonce), bridge.account.baseBlockNumber);
       expect(verifyMmrProof({ root: root.root, leafHash: fixture.messageHash as Hex, leafIndex: BigInt(fixture.nonce), proof, totalLeafCount: root.totalLeafCount })).toBe(true);
     }
