@@ -37,7 +37,7 @@ export type ClaimPlan = {
 /**
  * Chooses how to submit a claim. Everything uses standard v0 transactions — one transaction when it
  * fits, otherwise "prove" then "release", the pattern used by real mainnet claims. Only when a proof
- * is too large even for that (22+ nodes, which only happens for claims made months late) does it
+ * is too large even for that (22+ nodes, which only happens for claims made long after the burn once the bridge has carried many messages) does it
  * fall back to one large v1 transaction, if the wallet supports them.
  */
 export function planClaim(inputs: ClaimInputs, options: { supportsV1: boolean }): ClaimPlan {
@@ -81,8 +81,5 @@ export function planClaim(inputs: ClaimInputs, options: { supportsV1: boolean })
   if (options.supportsV1 && fitsInTransaction(1, payer, single)) {
     return { version: 1, strategy: "single", txs: [{ label: "Prove the message and release funds", instructions: single }] };
   }
-  throw new UserFacingError(
-    `This claim's proof has ${inputs.proofState.proof.length} parts, which is too large for a standard Solana transaction. ` +
-      "Connect a Solana wallet that supports large (v1) transactions, or try again later — proof sizes change as the bridge processes more messages. Your funds stay safe in the bridge meanwhile."
-  );
+  throw new UserFacingError("Connect a Solana wallet that supports large (v1) transactions to claim.");
 }

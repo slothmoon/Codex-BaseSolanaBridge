@@ -72,7 +72,7 @@ describe("claim planning", () => {
   });
 
   it("explains, instead of failing silently, when the proof is too large and the wallet cannot sign v1", async () => {
-    await expect(inputs(24).then((value) => planClaim(value, { supportsV1: false }))).rejects.toThrow(/too large for a standard Solana transaction/);
+    await expect(inputs(24).then((value) => planClaim(value, { supportsV1: false }))).rejects.toThrow("Connect a Solana wallet that supports large (v1) transactions to claim.");
   });
 
   it("only releases once the message is proven", async () => {

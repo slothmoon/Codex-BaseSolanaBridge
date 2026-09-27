@@ -34,7 +34,7 @@ The review is tied to a key made from every input (token, amount, both wallets).
 
 | Area | v1 | v2 |
 |---|---|---|
-| Claim size | One legacy transaction; fails once a proof exceeds 17 nodes (common for late claims) | Standard v0 transactions: one when it fits, otherwise prove then release (up to 21 nodes). Only for claims made months late (22+ nodes) does it use one large v1 transaction, if the wallet supports it |
+| Claim size | One legacy transaction; fails once a proof exceeds 17 nodes (common for late claims) | Standard v0 transactions: one when it fits, otherwise prove then release (up to 21 nodes). Only for claims made long after the burn on a busy bridge (22+ nodes) does it use one large v1 transaction, which needs a wallet that supports v1. Proofs are made against the latest output root, as in the official scripts, so they grow over time |
 | Proof safety | Sent unchecked | Verified locally against the on-chain output root before any signature |
 | Priority fees | None | 75th-percentile recent fee for the touched accounts, clamped; compute limit sized from simulation |
 | Assets | SPL only | SPL, Token-2022 and native SOL; tracks and claims wrapped-token transfers too |
