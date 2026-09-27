@@ -52,7 +52,7 @@ export async function prepareClaim(input: {
   payer: Address;
   supportsV1: boolean;
   rpc: SolanaRpc;
-  archive: PublicClient;
+  base: PublicClient;
 }): Promise<PreparedClaim> {
   const { status, payer, rpc } = input;
   const program = NETWORK.solana.bridgeProgram;
@@ -72,7 +72,7 @@ export async function prepareClaim(input: {
 
     let proof;
     try {
-      proof = await generateProof(input.archive, status.event.nonce, rootBlock);
+      proof = await generateProof(input.base, status.event.nonce, rootBlock);
     } catch (error) {
       throw new UserFacingError("Could not generate the proof on Base. Try again in a moment.", String((error as Error)?.message ?? error));
     }

@@ -4,7 +4,7 @@ import { findAssociatedTokenPda } from "@solana-program/token";
 import { describe, expect, it } from "vitest";
 
 import { NETWORK } from "../../src/config";
-import { generateProof, getBaseArchiveClient, getBaseClient } from "../../src/chain/base";
+import { generateProof, getBaseClient } from "../../src/chain/base";
 import { fetchAccounts, getSolanaRpc } from "../../src/chain/solana";
 import { inspectToken } from "../../src/core/route";
 import { rehearseRelease } from "../../src/core/rehearsal";
@@ -56,7 +56,7 @@ describe("live mainnet", () => {
     const [account] = await fetchAccounts(rpc, [await findOutputRootPda(NETWORK.solana.bridgeProgram, bridge.account.baseBlockNumber)]);
     const root = decodeOutputRoot(account!.data);
     for (const fixture of mainnet.messages) {
-      const proof = await generateProof(getBaseArchiveClient(), BigInt(fixture.nonce), bridge.account.baseBlockNumber);
+      const proof = await generateProof(getBaseClient(), BigInt(fixture.nonce), bridge.account.baseBlockNumber);
       expect(verifyMmrProof({ root: root.root, leafHash: fixture.messageHash as Hex, leafIndex: BigInt(fixture.nonce), proof, totalLeafCount: root.totalLeafCount })).toBe(true);
     }
   });

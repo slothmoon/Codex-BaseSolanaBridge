@@ -4,7 +4,7 @@ import type { WalletAccount } from "@wallet-standard/base";
 import { formatUnits, isAddress, type Address, type Hex } from "viem";
 
 import { NETWORK } from "../config";
-import { getBaseArchiveClient, getBaseClient } from "../chain/base";
+import { getBaseClient } from "../chain/base";
 import { getSolanaRpc } from "../chain/solana";
 import { executeClaim, prepareClaim, type ClaimProgress, type PreparedClaim } from "../core/claim";
 import { describeError, isWalletRejection, UserFacingError } from "../core/errors";
@@ -306,7 +306,7 @@ export async function reviewClaim(): Promise<void> {
   claimProgress.value = [];
   try {
     const signer = toSolanaSigner(wallet.wallet, account);
-    const prepared = await prepareClaim({ status, payer: signer.address, supportsV1: signer.supportsV1, rpc: getSolanaRpc(), archive: getBaseArchiveClient() });
+    const prepared = await prepareClaim({ status, payer: signer.address, supportsV1: signer.supportsV1, rpc: getSolanaRpc(), base: getBaseClient() });
     claimPrep.value = { status: "ready", value: prepared };
   } catch (error) {
     claimPrep.value = failed(error);

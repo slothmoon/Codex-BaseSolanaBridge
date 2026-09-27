@@ -44,7 +44,7 @@ The review is tied to a key made from every input (token, amount, both wallets).
 | Wallet check | Fee payer and signature present | Fee payer unchanged and the connected account's signature verifies |
 | Ambiguous send failures | Warned | If the Base wallet errors without a clear rejection, the review is discarded so a second click can't burn twice |
 | Interrupted claims | Restart | Clicking Claim again continues from on-chain state (e.g. only the release if the proof already landed) |
-| RPC resilience | Single endpoint | Ordered fallbacks for Base and Solana; separate archive endpoint for proofs |
+| RPC | Single endpoint | One endpoint per chain (Base serves current and historical reads), each overridable |
 | Status | Manual refresh | Manual refresh (click Track), ETA from Base finality, clear reverted/not-found/not-a-bridge states, local history of your burns |
 | Stack | Vanilla DOM, web3.js v1 | Preact + signals, `@solana/kit` (~1/4 the Solana bundle size), viem |
 
@@ -68,8 +68,8 @@ npm run dev
 
 Copy `.env.example` to `.env`. Every `VITE_` variable is public in the bundle — never put secrets there.
 
-- `VITE_BASE_RPC_URL`, `VITE_SOLANA_RPC_URL` — preferred endpoints, tried before the public defaults.
-- `VITE_BASE_ARCHIVE_RPC_URL` — archive-capable Base endpoint for historical `eth_call` (proofs). High-traffic deployments should set domain-restricted endpoints.
+- `VITE_BASE_RPC_URL` — the Base endpoint for every read (default `https://mainnet.base.org`). It must serve historical `eth_call`, which proof generation uses.
+- `VITE_SOLANA_RPC_URL` — the Solana endpoint (default `https://solana-rpc.publicnode.com`). Public endpoints can be slow under load, so set a domain-restricted key in production.
 
 If Base announces a bridge upgrade, follow their instructions and run `npm run test:live` to confirm this app still works against it.
 

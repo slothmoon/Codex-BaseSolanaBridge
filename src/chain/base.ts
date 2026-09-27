@@ -1,7 +1,6 @@
 import {
   createPublicClient,
   decodeEventLog,
-  fallback,
   getAddress,
   http,
   parseAbi,
@@ -64,29 +63,16 @@ export const BRIDGE_ABI = [
   }
 ] as const;
 
-function makeClient(urls: string[]): PublicClient {
-  return createPublicClient({
+let client: PublicClient | null = null;
+
+/** One client for every Base read, current and historical. */
+export function getBaseClient(): PublicClient {
+  client ??= createPublicClient({
     chain: NETWORK.base.chain,
     batch: { multicall: true },
-    transport: fallback(
-      urls.map((url) => http(url, { retryCount: 1, retryDelay: 600, timeout: 15_000 })),
-      { retryCount: 1 }
-    )
+    transport: http(NETWORK.base.rpcUrl, { retryCount: 1, retryDelay: 600, timeout: 15_000 })
   }) as PublicClient;
-}
-
-let latestClient: PublicClient | null = null;
-let archiveClient: PublicClient | null = null;
-
-export function getBaseClient(): PublicClient {
-  latestClient ??= makeClient(NETWORK.base.rpcUrls);
-  return latestClient;
-}
-
-/** Historical `eth_call` (proof generation) needs an archive-capable endpoint. */
-export function getBaseArchiveClient(): PublicClient {
-  archiveClient ??= makeClient(NETWORK.base.archiveRpcUrls);
-  return archiveClient;
+  return client;
 }
 
 export type WrapperInfo = {

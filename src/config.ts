@@ -3,11 +3,6 @@ import { base } from "viem/chains";
 
 // Base mainnet → Solana mainnet. Addresses match base/bridge's base/deployments/base_mainnet.json.
 
-function withOverride(override: string | undefined, defaults: string[]): string[] {
-  const trimmed = override?.trim();
-  return trimmed ? [trimmed, ...defaults.filter((url) => url !== trimmed)] : defaults;
-}
-
 const env = import.meta.env ?? {};
 
 export const NETWORK = {
@@ -17,18 +12,11 @@ export const NETWORK = {
     factory: "0xDD56781d0509650f8C2981231B6C917f2d5d7dF2",
     /** The CrossChainERC20 that represents native SOL on Base. */
     solWrapper: "0x311935Cd80B76769bF2ecC9D8Ab7635b2139cf82",
-    /** Used for every latest-state read. Tried in order. Latest-state reads feed the burn decision, so only Base-operated endpoints plus publicnode. */
-    rpcUrls: withOverride(env.VITE_BASE_RPC_URL, ["https://mainnet.base.org", "https://developer-access-mainnet.base.org", "https://base-rpc.publicnode.com"]),
     /**
-     * Used for historical `eth_call` (proof generation); must be archive-capable. Tried in order. A
-     * third-party fallback is safe here because every proof is verified against the on-chain Solana
-     * output root before anything is signed.
+     * Every Base read, including historical `eth_call` for proofs, so it must serve old blocks.
+     * Proofs are safe from any endpoint: each is checked against the output root on Solana before signing.
      */
-    archiveRpcUrls: withOverride(env.VITE_BASE_ARCHIVE_RPC_URL ?? env.VITE_BASE_RPC_URL, [
-      "https://mainnet.base.org",
-      "https://developer-access-mainnet.base.org",
-      "https://base.gateway.tenderly.co"
-    ]),
+    rpcUrl: env.VITE_BASE_RPC_URL?.trim() || "https://mainnet.base.org",
     explorer: "https://basescan.org",
     /** Average block time, used only for ETAs. */
     blockTimeSeconds: 2
@@ -37,7 +25,11 @@ export const NETWORK = {
     bridgeProgram: address("HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM"),
     /** Wallet Standard chain identifier. */
     chain: "solana:mainnet",
-    rpcUrls: withOverride(env.VITE_SOLANA_RPC_URL, ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"])
+    /**
+     * A free, keyless endpoint that serves browser pages (api.mainnet-beta.solana.com refuses them, and
+     * drpc's Solana is paid-only). Public endpoints can be slow under load; set VITE_SOLANA_RPC_URL in production.
+     */
+    rpcUrl: env.VITE_SOLANA_RPC_URL?.trim() || "https://solana-rpc.publicnode.com"
   }
 } as const;
 

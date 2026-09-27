@@ -6,7 +6,7 @@ import type { Hex } from "viem";
 import { describe, it } from "vitest";
 
 import { NETWORK } from "../../src/config";
-import { generateProof, getBaseArchiveClient, getBaseClient, lookupBridgeTransaction } from "../../src/chain/base";
+import { generateProof, getBaseClient, lookupBridgeTransaction } from "../../src/chain/base";
 import { fetchAccounts, getSolanaRpc } from "../../src/chain/solana";
 import { decodeBridgeAccount, decodeTokenAccount } from "../../src/protocol/accounts";
 import { findBridgePda, findIncomingMessagePda, findOutputRootPda, findSolVaultPda, findTokenVaultPda } from "../../src/protocol/instructions";
@@ -48,7 +48,7 @@ describe.runIf(process.env.CAPTURE_FIXTURES === "1")("capture mainnet fixtures",
       if (lookup.status !== "found") throw new Error(`${txHash}: ${lookup.status}`);
       const incoming = await findIncomingMessagePda(program, lookup.event.messageHash);
       const [incomingAccount] = await fetchAccounts(rpc, [incoming]);
-      const proof = await generateProof(getBaseArchiveClient(), lookup.event.nonce, rootBlock);
+      const proof = await generateProof(base, lookup.event.nonce, rootBlock);
       messages.push({
         txHash,
         baseBlock: lookup.blockNumber.toString(),

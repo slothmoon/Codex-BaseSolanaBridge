@@ -4,40 +4,17 @@ import {
   getBase64Encoder,
   type Address,
   type Base64EncodedWireTransaction,
-  type RpcTransport,
   type Signature
 } from "@solana/kit";
 
 import { NETWORK } from "../config";
-
-/**
- * Tries each RPC in order and moves on only when a request fails at the transport level
- * (network error, HTTP 429/5xx). JSON-RPC errors are returned to the caller untouched, so a
- * rejected transaction is never silently re-broadcast somewhere else with a different outcome.
- */
-export function createFallbackTransport(urls: string[]): RpcTransport {
-  if (urls.length === 0) throw new Error("At least one Solana RPC URL is required.");
-  const transports = urls.map((url) => createDefaultRpcTransport({ url }));
-  return (async (config: Parameters<RpcTransport>[0]) => {
-    let lastError: unknown;
-    for (const transport of transports) {
-      try {
-        return await transport(config);
-      } catch (error) {
-        lastError = error;
-        if (config.signal?.aborted) break;
-      }
-    }
-    throw lastError;
-  }) as RpcTransport;
-}
 
 export type SolanaRpc = ReturnType<typeof createSolanaRpcFromTransport>;
 
 let rpcSingleton: SolanaRpc | null = null;
 
 export function getSolanaRpc(): SolanaRpc {
-  rpcSingleton ??= createSolanaRpcFromTransport(createFallbackTransport(NETWORK.solana.rpcUrls));
+  rpcSingleton ??= createSolanaRpcFromTransport(createDefaultRpcTransport({ url: NETWORK.solana.rpcUrl }));
   return rpcSingleton;
 }
 
