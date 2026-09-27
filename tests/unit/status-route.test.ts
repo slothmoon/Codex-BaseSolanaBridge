@@ -76,18 +76,26 @@ describe("tracking a Base transaction", () => {
   it("reads a real claimed transfer as claimed", async () => {
     const fixture = message("spl");
     const decoded = (await import("../../src/protocol/message")).decodeBridgeMessage((await import("viem")).hexToBytes(fixture.data));
-    const mint = decoded.type === "transfer" && decoded.transfer.kind === "spl" ? decoded.transfer.mint : "";
-    const status = await trackWith(receiptFor(fixture), {
+    if (decoded.type !== "transfer" || decoded.transfer.kind !== "spl") throw new Error("fixture must be an SPL transfer");
+    const accounts = {
       [fixture.incomingAddress]: { owner: NETWORK.solana.bridgeProgram, data: fromBase64(fixture.incomingMessage.data) },
-      [mint]: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: fromBase64(mainnet.mints[0].data) }
-    }, { symbol: "neet" });
-    expect(status).toMatchObject({ state: "claimed", asset: { symbol: "neet" } });
+      [decoded.transfer.mint]: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: fromBase64(mainnet.mints[0].data) }
+    };
+    const status = await trackWith(receiptFor(fixture), accounts, { symbol: "neet" });
+    expect(status).toMatchObject({ state: "claimed", asset: { symbol: "neet" }, recipientWallet: null }); // token account not found
+
+    // The recipient wallet is the owner recorded in the destination token account.
+    const tokenAccount = { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: fromBase64(mainnet.vaults[0].data) };
+    const withAccount = await trackWith(receiptFor(fixture), { ...accounts, [decoded.transfer.to]: tokenAccount }, { symbol: "neet" });
+    expect(withAccount).toMatchObject({ recipientWallet: mainnet.vaults[0].address });
   });
 
   it("treats an unproven message as ready once a covering root exists, and waits otherwise", async () => {
     const fixture = message("sol");
     const ready = await trackWith(receiptFor(fixture), { [fixture.incomingAddress]: null });
     expect(ready).toMatchObject({ state: "ready", asset: { symbol: "SOL", decimals: 9 } });
+    if (ready.state !== "ready") throw new Error("expected ready");
+    expect(ready.recipientWallet).toBe(ready.transfer.to); // SOL returns name the wallet itself
 
     const prefunded = await trackWith(receiptFor(fixture), { [fixture.incomingAddress]: { owner: SYSTEM_PROGRAM, data: new Uint8Array(), lamports: 5n } });
     expect(prefunded.state).toBe("ready");

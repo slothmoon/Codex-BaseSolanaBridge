@@ -4,7 +4,7 @@ import { hexToBytes, isHash, type Hex, type PublicClient } from "viem";
 import { NETWORK } from "../config";
 import { ERC20_WRAPPER_ABI, lookupBridgeTransaction, type BridgeEvent } from "../chain/base";
 import { fetchAccounts, type SolanaRpc } from "../chain/solana";
-import { decodeBridgeAccount, decodeIncomingMessage, decodeMint, type BridgeAccount } from "../protocol/accounts";
+import { decodeBridgeAccount, decodeIncomingMessage, decodeMint, decodeTokenAccount, type BridgeAccount } from "../protocol/accounts";
 import { SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
 import { findBridgePda, findIncomingMessagePda } from "../protocol/instructions";
 import { decodeBridgeMessage, type BridgeMessage, type BridgeTransfer } from "../protocol/message";
@@ -22,7 +22,12 @@ export type TrackedCommon = {
   bridgePda: Address;
 };
 
-export type TrackedTransfer = TrackedCommon & { transfer: BridgeTransfer; asset: TrackedAsset };
+export type TrackedTransfer = TrackedCommon & {
+  transfer: BridgeTransfer;
+  asset: TrackedAsset;
+  /** The Solana wallet that receives the funds; null while a token account that does not exist yet hides its owner. */
+  recipientWallet: Address | null;
+};
 
 export type TrackStatus =
   | { state: "not-found"; txHash: Hex }
@@ -110,8 +115,8 @@ export async function trackTransaction(input: { txHash: Hex; base: PublicClient;
     };
   }
 
-  const asset = await describeAsset(message.transfer, base, rpc);
-  const tracked: TrackedTransfer = { ...common, transfer: message.transfer, asset };
+  const { asset, recipientWallet } = await describeTransfer(message.transfer, base, rpc);
+  const tracked: TrackedTransfer = { ...common, transfer: message.transfer, asset, recipientWallet };
   if (executed === "executed") return { state: "claimed", ...tracked };
   if (executed === "proven") return { state: "proven", ...tracked };
   if (bridgeState.account.baseBlockNumber >= blockNumber) return { state: "ready", ...tracked };
@@ -131,10 +136,10 @@ function readExecuted(account: { owner: Address; data: Uint8Array } | null, mess
   return decodeIncomingMessage(account.data, messageLength).executed ? "executed" : "proven";
 }
 
-async function describeAsset(transfer: BridgeTransfer, base: PublicClient, rpc: SolanaRpc): Promise<TrackedAsset> {
-  if (transfer.kind === "sol") return { symbol: "SOL", decimals: 9 };
+async function describeTransfer(transfer: BridgeTransfer, base: PublicClient, rpc: SolanaRpc): Promise<{ asset: TrackedAsset; recipientWallet: Address | null }> {
+  if (transfer.kind === "sol") return { asset: { symbol: "SOL", decimals: 9 }, recipientWallet: transfer.to };
 
-  const [mintAccount] = await fetchAccounts(rpc, [transfer.mint]);
+  const [mintAccount, destination] = await fetchAccounts(rpc, [transfer.mint, transfer.to]);
   if (!mintAccount) throw new Error(`The Solana mint ${transfer.mint} was not found.`);
   if (mintAccount.owner !== TOKEN_PROGRAM && mintAccount.owner !== TOKEN_2022_PROGRAM) {
     throw new Error("The Solana mint is owned by an unsupported token program.");
@@ -146,5 +151,9 @@ async function describeAsset(transfer: BridgeTransfer, base: PublicClient, rpc: 
       .readContract({ address: transfer.baseToken, abi: ERC20_WRAPPER_ABI, functionName: "symbol" })
       .catch(() => "");
   }
-  return { symbol: symbol || "tokens", decimals };
+  // Token returns name the recipient's token account; its owner is the recipient wallet. An account that
+  // doesn't exist yet can't be traced back to its owner.
+  const isTokenAccount = destination !== null && destination.owner === mintAccount.owner;
+  const recipientWallet = isTokenAccount ? decodeTokenAccount(destination.data).owner : null;
+  return { asset: { symbol: symbol || "tokens", decimals }, recipientWallet };
 }

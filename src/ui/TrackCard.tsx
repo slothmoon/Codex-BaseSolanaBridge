@@ -125,6 +125,16 @@ function TransferView({ status }: { status: TrackedTransfer & { state: "waiting-
         <StatusPill state={status.state} paused={paused} />
       </div>
 
+      <dl class="rows">
+        <Row label="To Solana wallet">
+          {status.recipientWallet ? (
+            <Mono value={status.recipientWallet} href={solanaExplorerAccount(status.recipientWallet)} />
+          ) : (
+            <span class="muted">Shown once its token account exists</span>
+          )}
+        </Row>
+      </dl>
+
       <ol class="timeline">
         {steps.map((step, index) => (
           <li key={step.label} class={step.done ? "is-done" : index === current ? "is-current" : ""}>
@@ -137,6 +147,12 @@ function TransferView({ status }: { status: TrackedTransfer & { state: "waiting-
         ))}
       </ol>
 
+      {claimRun.value.status === "ready" && (
+        <Notice tone="success" title={claimRun.value.value.alreadyClaimed ? "Someone else completed the claim" : "Claim complete"}>
+          {claimRun.value.value.signatures.map((signature) => <div key={signature}><Mono value={signature} href={solanaExplorerTx(signature)} /></div>)}
+        </Notice>
+      )}
+
       {paused && <Notice tone="warn" title="The Solana side of the bridge is paused">Your funds are safe. Claiming resumes when the bridge is unpaused.</Notice>}
       {status.state === "waiting-for-root" && !paused && (
         <p class="muted small">The claim unlocks once Base finalizes your burn and an output root covering it reaches Solana, typically 20–35 minutes after the burn. This page checks automatically.</p>
@@ -148,7 +164,7 @@ function TransferView({ status }: { status: TrackedTransfer & { state: "waiting-
         <summary>Details</summary>
         <dl class="rows">
           <Row label="Base transaction"><Mono value={status.txHash} href={baseExplorerTx(status.txHash)} /></Row>
-          <Row label="Recipient">{<Mono value={status.transfer.to} href={solanaExplorerAccount(status.transfer.to)} />}</Row>
+          {status.transfer.kind !== "sol" && <Row label="Token account"><Mono value={status.transfer.to} href={solanaExplorerAccount(status.transfer.to)} /></Row>}
           {status.transfer.kind !== "sol" && <Row label="Mint"><Mono value={status.transfer.mint} href={solanaExplorerAccount(status.transfer.mint)} /></Row>}
           <Row label="Message nonce">{status.event.nonce.toString()}</Row>
           <Row label="Message hash"><Mono value={status.event.messageHash} /></Row>
@@ -201,11 +217,6 @@ function ClaimPanel() {
   return (
     <div class="claim-panel">
       {run.status === "error" && <ErrorNotice message={run.message} detail={run.detail} />}
-      {run.status === "ready" && (
-        <Notice tone="success" title={run.value.alreadyClaimed ? "Someone else completed the claim" : "Claim complete"}>
-          {run.value.signatures.map((signature) => <div key={signature}><Mono value={signature} href={solanaExplorerTx(signature)} /></div>)}
-        </Notice>
-      )}
 
       {prep.status === "idle" && (
         <button type="button" class="button button-primary" onClick={() => void reviewClaim()}>
