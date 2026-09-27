@@ -41,18 +41,13 @@ export function getSolanaRpc(): SolanaRpc {
   return rpcSingleton;
 }
 
-export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array; executable: boolean };
+export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };
 
 const base64 = getBase64Encoder();
 
-function toRawAccount(address: Address, value: { owner: Address; lamports: bigint; data: readonly [string, string]; executable: boolean } | null): RawAccount | null {
+function toRawAccount(address: Address, value: { owner: Address; lamports: bigint; data: readonly [string, string] } | null): RawAccount | null {
   if (!value) return null;
-  return { address, owner: value.owner, lamports: BigInt(value.lamports), data: new Uint8Array(base64.encode(value.data[0])), executable: value.executable };
-}
-
-export async function fetchAccount(rpc: SolanaRpc, address: Address): Promise<RawAccount | null> {
-  const { value } = await rpc.getAccountInfo(address, { encoding: "base64", commitment: "confirmed" }).send();
-  return toRawAccount(address, value as never);
+  return { address, owner: value.owner, lamports: BigInt(value.lamports), data: new Uint8Array(base64.encode(value.data[0])) };
 }
 
 /** Fetches up to 100 accounts in one round trip, preserving order. */
@@ -100,7 +95,7 @@ export async function waitForSignature(
 }
 
 /**
- * The first broadcast runs RPC preflight so a transaction that would fail (for example because a
+ * The first broadcast runs RPC preflight so a transaction that would fail (for example because
  * someone else claimed the message after our simulation) is rejected before it can cost a fee.
  * Re-broadcasts of the same bytes skip preflight, since the original may already be in flight.
  */

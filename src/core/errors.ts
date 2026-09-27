@@ -10,13 +10,20 @@ export class UserFacingError extends Error {
 }
 
 const RATE_LIMIT = /rate.?limit|too many requests|\b429\b|exceeded.*limit|capacity/i;
-const REJECTED = /user rejected|rejected the request|denied|cancel+ed|declined/i;
+// Only explicit user refusals. Generic "cancelled"/"denied" errors (timeouts, RPC failures) must not
+// count, because treating an ambiguous send failure as a rejection would allow a double burn.
+const REJECTED = /user rejected|user denied|rejected (the|this) request|user cancel+ed|request rejected by user/i;
+
+/** An explicit "no" from the user in their wallet (EIP-1193 code 4001 or equivalent wording). */
+export function isWalletRejection(error: unknown): boolean {
+  if (error instanceof UserFacingError) return false;
+  return providerCode(error) === 4001 || REJECTED.test(collectMessages(error));
+}
 
 export function describeError(error: unknown): { message: string; detail?: string } {
   if (error instanceof UserFacingError) return { message: error.message, detail: error.detail };
   const raw = collectMessages(error);
-  const code = providerCode(error);
-  if (code === 4001 || REJECTED.test(raw)) return { message: "You rejected the request in your wallet. Nothing was sent." };
+  if (isWalletRejection(error)) return { message: "You rejected the request in your wallet. Nothing was sent." };
   if (RATE_LIMIT.test(raw)) {
     return { message: "A public RPC endpoint is rate limiting requests. Wait a few seconds and try again.", detail: raw };
   }
@@ -86,8 +93,17 @@ function friendlyBridgeError(name: string): string | undefined {
   }
 }
 
-function explainLogs(logs?: readonly string[] | null): string | undefined {
+/**
+ * Anchor logs name the error (`Error Code: AlreadyExecuted. Error Number: 12501.`), which works on
+ * every failure path, including RPC preflight rejections where the raw error is not returned.
+ */
+export function explainLogs(logs?: readonly string[] | null): string | undefined {
   if (!logs) return undefined;
+  for (const line of logs) {
+    const match = /Error Code: (\w+)\. Error Number: (\d+)/.exec(line);
+    const known = match ? BRIDGE_PROGRAM_ERRORS[Number(match[2])] : undefined;
+    if (known && known[0] === match![1]) return `${friendlyBridgeError(known[0]) ?? known[1]} (bridge error ${known[0]})`;
+  }
   const insufficient = logs.find((line) => /insufficient lamports/i.test(line));
   if (insufficient) return "Your Solana wallet does not have enough SOL for fees and account rent. Add a little SOL and try again.";
   if (logs.some((line) => /already in use/i.test(line))) return "The proof account already exists. Refresh the status; the message may already be proven or claimed.";

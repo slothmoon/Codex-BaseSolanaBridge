@@ -13,7 +13,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { fetchAccounts, getSolanaRpc, type RawAccount } from "../../src/chain/solana";
 import { planClaim, type ClaimPlan } from "../../src/core/claim-plan";
-import { buildTransaction, MAX_COMPUTE_UNITS, type TxVersion } from "../../src/core/tx";
+import { buildTransaction, MAX_COMPUTE_UNITS } from "../../src/core/tx";
 import { decodeIncomingMessage, decodeTokenAccount } from "../../src/protocol/accounts";
 import { bytesToAddress, hexToBytes as toBytes } from "../../src/protocol/bytes";
 import { SYSTEM_PROGRAM } from "../../src/protocol/constants";
@@ -87,7 +87,7 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
     return transfer.kind === "sol" ? BigInt(account.lamports) : decodeTokenAccount(new Uint8Array(account.data)).amount;
   };
 
-  async function plan(fixture: Fixture, payer: KeyPairSigner, transfer: BridgeTransfer, tokenProgram: Address | null, options: { version: TxVersion; force?: ClaimPlan["strategy"]; proof?: `0x${string}`[]; createDestination?: boolean }) {
+  async function plan(fixture: Fixture, payer: KeyPairSigner, transfer: BridgeTransfer, tokenProgram: Address | null, options: { proof?: `0x${string}`[]; createDestination?: boolean }) {
     let createDestination = null;
     if (options.createDestination && transfer.kind !== "sol") {
       const owner = decodeTokenAccount(live.get(transfer.to)!.data).owner;
@@ -107,11 +107,21 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
         messageData: hexToBytes(fixture.data),
         proofState: { kind: "unproven", outputRoot: address(mainnet.outputRoot.address), proof: options.proof ?? fixture.proof },
         createDestination,
-        relayRemainingAccounts: await relayRemainingAccounts(program, transfer, tokenProgram),
-        existingBuffer: null
+        relayRemainingAccounts: await relayRemainingAccounts(program, transfer, tokenProgram)
       },
-      { supportsV1: options.version === 1, createBufferSigner: () => generateKeyPairSigner(), force: options.force }
+      { supportsV1: false }
     );
+  }
+
+  /**
+   * The planner only picks split/v1 for large proofs, and the captured proofs are small, so the
+   * other transaction shapes are exercised by re-packing the planner's own instructions.
+   */
+  function reshape(claimPlan: ClaimPlan, shape: "planned" | "split" | "v1"): ClaimPlan {
+    const all = claimPlan.txs.flatMap((tx) => tx.instructions);
+    if (shape === "split") return { version: 0, strategy: "split", txs: [{ label: "prove", instructions: all.slice(0, 1) }, { label: "release", instructions: all.slice(1) }] };
+    if (shape === "v1") return { version: 1, strategy: "single", txs: [{ label: "single v1", instructions: all }] };
+    return claimPlan;
   }
 
   async function execute(svm: InstanceType<LiteSvmModule["LiteSVM"]>, payer: KeyPairSigner, claimPlan: ClaimPlan) {
@@ -125,7 +135,7 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
         computeUnitLimit: MAX_COMPUTE_UNITS,
         microLamportsPerComputeUnit: 1n
       });
-      const signed = await partiallySignTransaction([payer.keyPair, ...tx.signers.map((signer) => signer.keyPair)], built);
+      const signed = await partiallySignTransaction([payer.keyPair], built);
       const result = svm.sendTransaction(signed as never);
       if (result instanceof litesvm!.FailedTransactionMetadata) {
         throw new Error(`${tx.label} failed: ${JSON.stringify(result.err(), (_, v) => (typeof v === "bigint" ? v.toString() : v))}\n${result.meta().logs().join("\n")}`);
@@ -134,11 +144,10 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
     }
   }
 
-  const cases: { name: string; version: TxVersion; force?: ClaimPlan["strategy"] }[] = [
-    { name: "v0, cheapest strategy", version: 0 },
-    { name: "v0, forced prove/relay split", version: 0, force: "split" },
-    { name: "v0, forced buffered proof upload", version: 0, force: "buffered" },
-    { name: "v1, single large transaction", version: 1 }
+  const cases: { name: string; shape: "planned" | "split" | "v1" }[] = [
+    { name: "v0, as planned", shape: "planned" },
+    { name: "v0, prove then release", shape: "split" },
+    { name: "v1, single large transaction", shape: "v1" }
   ];
 
   for (const fixture of mainnet.messages) {
@@ -146,18 +155,17 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
       it(`claims ${fixture.data.slice(0, 6) === "0x0100" ? "SOL" : fixture.data.slice(0, 6) === "0x0101" ? "SPL" : "wrapped"} nonce ${fixture.nonce}: ${scenario.name}`, async (context) => {
         const { svm, payer, transfer, tokenProgram } = await setup(fixture);
         const before = balanceOf(svm, transfer);
-        const claimPlan = await plan(fixture, payer, transfer, tokenProgram, { version: scenario.version, force: scenario.force });
+        const claimPlan = reshape(await plan(fixture, payer, transfer, tokenProgram, {}), scenario.shape);
         try {
           await execute(svm, payer, claimPlan);
         } catch (error) {
-          if (scenario.version === 1 && /version|unsupported|sanitize/i.test(String(error))) context.skip();
+          if (scenario.shape === "v1" && /version|unsupported|sanitize/i.test(String(error))) context.skip();
           throw error;
         }
         const incoming = svm.getAccount(address(fixture.incomingMessage.address));
         expect(incoming.exists).toBe(true);
         expect(decodeIncomingMessage(new Uint8Array(incoming.exists ? incoming.data : []), hexToBytes(fixture.data).length).executed).toBe(true);
         expect(balanceOf(svm, transfer) - before).toBe(transfer.amount);
-        for (const tx of claimPlan.txs) for (const signer of tx.signers) expect(svm.getAccount(signer.address).exists).toBe(false); // buffer closed, rent refunded
       });
     }
   }
@@ -166,7 +174,7 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
     const fixture = mainnet.messages.find((item) => item.data.startsWith("0x0101"))!;
     const { svm, put, payer, transfer, tokenProgram } = await setup(fixture);
     put(transfer.to, SYSTEM_PROGRAM, new Uint8Array(), 0n); // remove the destination
-    const claimPlan = await plan(fixture, payer, transfer, tokenProgram, { version: 0, createDestination: true });
+    const claimPlan = await plan(fixture, payer, transfer, tokenProgram, { createDestination: true });
     await execute(svm, payer, claimPlan);
     expect(balanceOf(svm, transfer)).toBe(transfer.amount);
   });
@@ -176,13 +184,13 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
     const { svm, payer, transfer, tokenProgram } = await setup(fixture);
     const bad = [...fixture.proof];
     bad[0] = `0x${"ab".repeat(32)}`;
-    await expect(execute(svm, payer, await plan(fixture, payer, transfer, tokenProgram, { version: 0, proof: bad }))).rejects.toThrow(/12400|InvalidProof/);
+    await expect(execute(svm, payer, await plan(fixture, payer, transfer, tokenProgram, { proof: bad }))).rejects.toThrow(/12400|InvalidProof/);
   });
 
   it("cannot be claimed twice (AlreadyExecuted)", async () => {
     const fixture = mainnet.messages[0];
     const { svm, payer, transfer, tokenProgram } = await setup(fixture);
-    await execute(svm, payer, await plan(fixture, payer, transfer, tokenProgram, { version: 0 }));
+    await execute(svm, payer, await plan(fixture, payer, transfer, tokenProgram, {}));
     const relayOnly = await planClaim(
       {
         program,
@@ -195,10 +203,9 @@ describe.runIf(litesvm !== null)("claims against the real bridge program (LiteSV
         messageData: toBytes(fixture.data),
         proofState: { kind: "proven" },
         createDestination: null,
-        relayRemainingAccounts: await relayRemainingAccounts(program, transfer, tokenProgram),
-        existingBuffer: null
+        relayRemainingAccounts: await relayRemainingAccounts(program, transfer, tokenProgram)
       },
-      { supportsV1: false, createBufferSigner: () => generateKeyPairSigner() }
+      { supportsV1: false }
     );
     await expect(execute(svm, payer, relayOnly)).rejects.toThrow(/12501|AlreadyExecuted/);
   });

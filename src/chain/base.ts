@@ -27,7 +27,6 @@ export const FACTORY_ABI = parseAbi(["function isCrossChainErc20(address token) 
 export const BRIDGE_ABI = [
   ...parseAbi([
     "function paused() view returns (bool)",
-    "function getNextNonce() view returns (uint64)",
     "function generateProof(uint64 leafIndex) view returns (bytes32[] proof)",
     "event MessageInitiated(bytes32 indexed messageHash, bytes32 indexed mmrRoot, (uint64 nonce, address sender, bytes data) message)",
     "error Paused()",
@@ -65,8 +64,6 @@ export const BRIDGE_ABI = [
     outputs: []
   }
 ] as const;
-
-const ERC1967_IMPLEMENTATION_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
 function makeClient(urls: string[]): PublicClient {
   return createPublicClient({
@@ -181,9 +178,4 @@ function isReceiptNotFound(error: unknown): boolean {
 
 export async function generateProof(client: PublicClient, nonce: bigint, atBlock: bigint): Promise<readonly Hex[]> {
   return client.readContract({ address: NETWORK.base.bridge, abi: BRIDGE_ABI, functionName: "generateProof", args: [nonce], blockNumber: atBlock });
-}
-
-export async function readImplementation(client: PublicClient, proxy: Address): Promise<Address> {
-  const slot = await client.getStorageAt({ address: proxy, slot: ERC1967_IMPLEMENTATION_SLOT });
-  return getAddress(`0x${(slot ?? "0x").slice(-40).padStart(40, "0")}`);
 }

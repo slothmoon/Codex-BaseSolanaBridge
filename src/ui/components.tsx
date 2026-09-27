@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import type { Finding } from "../protocol/token2022";
+import type { Finding } from "../core/route";
 import { shortAddress } from "./format";
 
 export function Icon({ name }: { name: "copy" | "check" | "external" | "arrow" | "alert" | "info" | "close" | "spinner" | "wallet" }) {
@@ -55,10 +55,10 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
 }
 
 /** A shortened address or hash with copy and optional explorer link. */
-export function Mono({ value, href, full = false }: { value: string; href?: string; full?: boolean }) {
+export function Mono({ value, href }: { value: string; href?: string }) {
   return (
     <span class="mono-value">
-      <code title={value}>{full ? value : shortAddress(value, 6, 6)}</code>
+      <code title={value}>{shortAddress(value, 6, 6)}</code>
       <CopyButton value={value} />
       {href && (
         <a class="icon-button" href={href} target="_blank" rel="noreferrer noopener" aria-label="Open in explorer" title="Open in explorer">
@@ -83,15 +83,11 @@ export function Notice({ tone, title, children }: { tone: "info" | "warn" | "dan
 
 export function Findings({ findings }: { findings: Finding[] }) {
   if (findings.length === 0) return null;
-  const blocks = findings.filter((finding) => finding.level === "block");
-  const warns = findings.filter((finding) => finding.level === "warn");
+  const ordered = [...findings].sort((a, b) => (a.level === b.level ? 0 : a.level === "block" ? -1 : 1));
   return (
     <div class="findings">
-      {blocks.map((finding) => (
-        <Notice key={finding.code} tone="danger">{finding.message}</Notice>
-      ))}
-      {warns.map((finding) => (
-        <Notice key={finding.code} tone="warn">{finding.message}</Notice>
+      {ordered.map((finding) => (
+        <Notice key={finding.code} tone={finding.level === "block" ? "danger" : "warn"}>{finding.message}</Notice>
       ))}
     </div>
   );

@@ -7,13 +7,10 @@ import {
   decodeIncomingMessage,
   decodeMint,
   decodeOutputRoot,
-  decodeProveBuffer,
   decodeTokenAccount,
-  incomingMessageSpace,
-  proveBufferSpace
+  incomingMessageSpace
 } from "../../src/protocol/accounts";
-import { ACCOUNT_DISCRIMINATORS } from "../../src/protocol/constants";
-import { addressToBytes, concatBytes, u32le } from "../../src/protocol/bytes";
+import { concatBytes, u32le } from "../../src/protocol/bytes";
 import { findIncomingMessagePda, findOutputRootPda, findTokenVaultPda } from "../../src/protocol/instructions";
 import { decodeBridgeMessage, encodeTransferMessage, hashBridgeMessage } from "../../src/protocol/message";
 import { mmrProofLength, mmrRootFromProof, verifyMmrProof } from "../../src/protocol/mmr";
@@ -138,26 +135,14 @@ describe("account decoding (real mainnet accounts)", () => {
     expect(await findTokenVaultPda(program, address(vault.mint), vault.baseToken)).toBe(vault.address);
   });
 
-  it("reads mints, Token-2022 extensions and vault token accounts", () => {
+  it("reads Standard and Token-2022 mints and vault token accounts", () => {
     const jito = decodeMint(fromBase64(mainnet.mints[0].data));
     expect(jito).toMatchObject({ decimals: 9, isInitialized: true });
-    expect(jito.extensions.size).toBe(0);
     const pyusd = decodeMint(fromBase64(mainnet.mints[1].data));
     expect(pyusd.decimals).toBe(6);
-    expect(pyusd.extensions.size).toBeGreaterThan(3);
     const vault = decodeTokenAccount(fromBase64(mainnet.vaults[0].data));
     expect(vault.mint).toBe(mainnet.vaults[0].mint);
     expect(vault.owner).toBe(mainnet.vaults[0].address);
     expect(vault.state).toBe("initialized");
-  });
-
-  it("round-trips a prove buffer layout", () => {
-    const owner = address(mainnet.program);
-    const data = concatBytes(ACCOUNT_DISCRIMINATORS.proveBuffer, addressToBytes(owner), u32le(3), [1, 2, 3], u32le(1), new Uint8Array(32).fill(5));
-    expect(data.length).toBe(proveBufferSpace(3, 1));
-    const decoded = decodeProveBuffer(data);
-    expect(decoded.owner).toBe(owner);
-    expect([...decoded.data]).toEqual([1, 2, 3]);
-    expect(decoded.proof).toEqual([`0x${"05".repeat(32)}`]);
   });
 });

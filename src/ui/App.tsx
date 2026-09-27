@@ -1,5 +1,5 @@
 import { NETWORK } from "../config";
-import { upgradedComponents, walletError } from "../state/app";
+import { walletError } from "../state/app";
 import { Notice } from "./components";
 import { ReturnCard } from "./ReturnCard";
 import { TrackCard } from "./TrackCard";
@@ -21,11 +21,6 @@ export function App() {
       </header>
 
       <main>
-        {upgradedComponents.value.length > 0 && (
-          <Notice tone="warn" title="The bridge was upgraded after this interface was verified">
-            Changed: {upgradedComponents.value.join(", ")}. Existing safety checks still run, but consider waiting for this interface to be re-verified before burning large amounts.
-          </Notice>
-        )}
         {walletError.value && <Notice tone="danger">{walletError.value}</Notice>}
 
         <div class="hero">

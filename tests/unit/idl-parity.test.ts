@@ -2,15 +2,7 @@ import { AccountRole, address, type Instruction } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 
 import { ACCOUNT_DISCRIMINATORS, INSTRUCTION_DISCRIMINATORS, NATIVE_SOL_REMOTE_TOKEN, SEEDS } from "../../src/protocol/constants";
-import {
-  appendToProveBufferDataInstruction,
-  appendToProveBufferProofInstruction,
-  closeProveBufferInstruction,
-  initializeProveBufferInstruction,
-  proveMessageBufferedInstruction,
-  proveMessageInstruction,
-  relayMessageInstruction
-} from "../../src/protocol/instructions";
+import { proveMessageInstruction, relayMessageInstruction } from "../../src/protocol/instructions";
 import { BRIDGE_PROGRAM_ERRORS } from "../../src/protocol/program-errors";
 import { bytesToAddress, hexToBytes } from "../../src/protocol/bytes";
 import { idl, program } from "../helpers";
@@ -27,12 +19,7 @@ const a = (n: number) => address(bytesToAddress(new Uint8Array(32).fill(n)));
 /** Every instruction builder, invoked with distinct dummy accounts. */
 const built: Record<keyof typeof INSTRUCTION_DISCRIMINATORS, Instruction> = {
   proveMessage: proveMessageInstruction({ program, payer: a(1), outputRoot: a(2), message: a(3), bridge: a(4), nonce: 7n, sender: `0x${"11".repeat(20)}`, data: new Uint8Array([1, 2, 3]), proof: [`0x${"22".repeat(32)}`], messageHash: `0x${"33".repeat(32)}` }),
-  relayMessage: relayMessageInstruction({ program, message: a(3), bridge: a(4), remainingAccounts: [] }),
-  initializeProveBuffer: initializeProveBufferInstruction({ program, payer: a(1), bridge: a(4), buffer: a(5), maxDataLength: 98, maxProofLength: 20 }),
-  appendToProveBufferData: appendToProveBufferDataInstruction({ program, owner: a(1), buffer: a(5), chunk: new Uint8Array([9, 9]) }),
-  appendToProveBufferProof: appendToProveBufferProofInstruction({ program, owner: a(1), buffer: a(5), proof: [`0x${"44".repeat(32)}`] }),
-  proveMessageBuffered: proveMessageBufferedInstruction({ program, payer: a(1), outputRoot: a(2), message: a(3), bridge: a(4), buffer: a(5), nonce: 7n, sender: `0x${"11".repeat(20)}`, messageHash: `0x${"33".repeat(32)}` }),
-  closeProveBuffer: closeProveBufferInstruction({ program, owner: a(1), buffer: a(5) })
+  relayMessage: relayMessageInstruction({ program, message: a(3), bridge: a(4), remainingAccounts: [] })
 };
 
 describe("parity with the vendored official IDL", () => {
@@ -44,7 +31,7 @@ describe("parity with the vendored official IDL", () => {
   });
 
   it("uses the IDL discriminator for every decoded account", () => {
-    const names: Record<keyof typeof ACCOUNT_DISCRIMINATORS, string> = { bridge: "Bridge", incomingMessage: "IncomingMessage", outputRoot: "OutputRoot", proveBuffer: "ProveBuffer" };
+    const names: Record<keyof typeof ACCOUNT_DISCRIMINATORS, string> = { bridge: "Bridge", incomingMessage: "IncomingMessage", outputRoot: "OutputRoot" };
     for (const [key, name] of Object.entries(names)) {
       expect(idl.accounts.find((account) => account.name === name)?.discriminator, name).toEqual([...ACCOUNT_DISCRIMINATORS[key as keyof typeof names]]);
     }
@@ -67,16 +54,7 @@ describe("parity with the vendored official IDL", () => {
   it("serializes arguments in the IDL's Borsh layout", () => {
     // prove_message(nonce u64, sender [u8;20], data bytes, proof Vec<[u8;32]>, message_hash [u8;32])
     expect(built.proveMessage.data!.length).toBe(8 + 8 + 20 + (4 + 3) + (4 + 32) + 32);
-    // initialize_prove_buffer(max_data_len u64, max_proof_len u64)
-    const init = built.initializeProveBuffer.data!;
-    expect(new DataView(init.buffer, init.byteOffset).getBigUint64(8, true)).toBe(98n);
-    expect(new DataView(init.buffer, init.byteOffset).getBigUint64(16, true)).toBe(20n);
-    // prove_message_buffered(nonce u64, sender [u8;20], message_hash [u8;32])
-    expect(built.proveMessageBuffered.data!.length).toBe(8 + 8 + 20 + 32);
-    expect(built.appendToProveBufferData.data!.length).toBe(8 + 4 + 2);
-    expect(built.appendToProveBufferProof.data!.length).toBe(8 + 4 + 32);
     expect(idlInstruction("prove_message").args.map((arg) => arg.name)).toEqual(["nonce", "sender", "data", "proof", "message_hash"]);
-    expect(idlInstruction("prove_message_buffered").args.map((arg) => arg.name)).toEqual(["nonce", "sender", "message_hash"]);
   });
 
   it("uses the IDL's seeds and native SOL constant", () => {

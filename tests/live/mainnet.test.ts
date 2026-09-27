@@ -1,23 +1,17 @@
 import { address, generateKeyPairSigner, getBase64EncodedWireTransaction, type Address, type Instruction } from "@solana/kit";
 import { hexToBytes, type Hex } from "viem";
+import { findAssociatedTokenPda } from "@solana-program/token";
 import { describe, expect, it } from "vitest";
 
 import { NETWORK } from "../../src/config";
 import { generateProof, getBaseArchiveClient, getBaseClient } from "../../src/chain/base";
-import { findUpgradedComponents } from "../../src/chain/pins";
 import { fetchAccounts, getSolanaRpc } from "../../src/chain/solana";
 import { inspectToken } from "../../src/core/route";
+import { rehearseRelease } from "../../src/core/rehearsal";
 import { loadBridgeState, trackTransaction } from "../../src/core/status";
 import { buildTransaction, MAX_COMPUTE_UNITS, type TxVersion } from "../../src/core/tx";
 import { decodeOutputRoot } from "../../src/protocol/accounts";
-import {
-  appendToProveBufferDataInstruction,
-  appendToProveBufferProofInstruction,
-  findOutputRootPda,
-  initializeProveBufferInstruction,
-  relayMessageInstruction,
-  relayRemainingAccounts
-} from "../../src/protocol/instructions";
+import { findOutputRootPda, relayMessageInstruction, relayRemainingAccounts } from "../../src/protocol/instructions";
 import { decodeBridgeMessage } from "../../src/protocol/message";
 import { verifyMmrProof } from "../../src/protocol/mmr";
 import { mainnet } from "../helpers";
@@ -38,10 +32,6 @@ async function simulate(version: TxVersion, instructions: Instruction[], feePaye
 }
 
 describe.runIf(NETWORK.id === "mainnet")("live mainnet", () => {
-  it("runs against the exact deployments this interface was verified with", async () => {
-    expect(await findUpgradedComponents(base, rpc)).toEqual([]);
-  });
-
   it("inspects real official wrappers with no blocking findings", async () => {
     for (const token of [NETWORK.base.solWrapper, "0x97bE14Dd8f994A5364573BC035D85309E7CB34de"]) {
       const inspection = await inspectToken({ token, holder: null, base, rpc });
@@ -90,21 +80,16 @@ describe.runIf(NETWORK.id === "mainnet")("live mainnet", () => {
     }
   });
 
-  it.each([0, 1] as const)("creates and fills a prove buffer on the real program (v%s)", async (version) => {
-    const bridge = await loadBridgeState(rpc);
-    const buffer = await generateKeyPairSigner();
-    const fixture = mainnet.messages[1];
-    const program = NETWORK.solana.bridgeProgram;
-    const data = hexToBytes(fixture.data);
-    const result = await simulate(version, [
-      initializeProveBufferInstruction({ program, payer: FUNDED_FEE_PAYER, bridge: bridge.pda, buffer: buffer.address, maxDataLength: data.length, maxProofLength: fixture.proof.length }),
-      appendToProveBufferDataInstruction({ program, owner: FUNDED_FEE_PAYER, buffer: buffer.address, chunk: data }),
-      appendToProveBufferProofInstruction({ program, owner: FUNDED_FEE_PAYER, buffer: buffer.address, proof: fixture.proof })
-    ]);
-    expect(result.err, (result.logs ?? []).join("\n")).toBeNull();
-    const logs = (result.logs ?? []).join("\n");
-    expect(logs).toMatch(/InitializeProveBuffer/);
-    expect(logs).toMatch(/AppendToProveBufferData/);
-    expect(logs).toMatch(/AppendToProveBufferProof/);
+  it("dry-runs real releases: exact amount for a new SPL recipient, SOL, and a clear failure", async () => {
+    const jito = await inspectToken({ token: "0x97bE14Dd8f994A5364573BC035D85309E7CB34de", holder: null, base, rpc });
+    const owner = (await generateKeyPairSigner()).address; // brand-new wallet: its token account must be created
+    const [ata] = await findAssociatedTokenPda({ owner, mint: jito.mint!.address, tokenProgram: jito.mint!.tokenProgram });
+    const spl = { kind: "spl" as const, rpc, mint: jito.mint!.address, decimals: jito.mint!.account.decimals, tokenProgram: jito.mint!.tokenProgram, vault: jito.vault.address, destination: ata, createForOwner: owner };
+    expect(await rehearseRelease({ ...spl, amount: 1_234_567n })).toMatchObject({ ok: true, received: 1_234_567n });
+    const tooMuch = await rehearseRelease({ ...spl, amount: jito.vault.balance + 1n });
+    expect(tooMuch.ok).toBe(false);
+    expect(!tooMuch.ok && tooMuch.reason).toMatch(/insufficient/i);
+    expect(await rehearseRelease({ kind: "sol", rpc, amount: 10_000_000n, recipient: FUNDED_FEE_PAYER })).toMatchObject({ ok: true, received: 10_000_000n });
   });
+
 });

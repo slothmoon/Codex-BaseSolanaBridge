@@ -38,8 +38,6 @@ export type TrackStatus =
 export type RootEta = {
   /** First output-root block that covers this burn. */
   eligibleRootBlock: bigint;
-  latestRootBlock: bigint;
-  finalizedBlock: bigint;
   /** Rough seconds until an eligible root is registered on Solana. */
   seconds: number;
 };
@@ -58,11 +56,11 @@ export function parseTxHash(input: string): Hex {
  * not registered on a fixed schedule — a root appears once there is a new message to cover). So the
  * wait is: until the first eligible root block is finalized, plus a short registration delay.
  */
-export function estimateRootEta(baseBlock: bigint, latestRootBlock: bigint, finalizedBlock: bigint, interval: bigint): RootEta {
+export function estimateRootEta(baseBlock: bigint, finalizedBlock: bigint, interval: bigint): RootEta {
   const eligibleRootBlock = interval > 0n ? ((baseBlock + interval - 1n) / interval) * interval : baseBlock;
   const blocksUntilFinal = eligibleRootBlock > finalizedBlock ? eligibleRootBlock - finalizedBlock : 0n;
   const seconds = Number(blocksUntilFinal) * NETWORK.base.blockTimeSeconds + ROOT_REGISTRATION_DELAY_SECONDS;
-  return { eligibleRootBlock, latestRootBlock, finalizedBlock, seconds };
+  return { eligibleRootBlock, seconds };
 }
 
 export async function loadBridgeState(rpc: SolanaRpc): Promise<{ pda: Address; account: BridgeAccount }> {
@@ -121,7 +119,7 @@ export async function trackTransaction(input: { txHash: Hex; base: PublicClient;
   const finalized = await base.getBlock({ blockTag: "finalized" }).then((block) => block.number);
   return {
     state: "waiting-for-root",
-    eta: estimateRootEta(blockNumber, bridgeState.account.baseBlockNumber, finalized, bridgeState.account.blockIntervalRequirement),
+    eta: estimateRootEta(blockNumber, finalized, bridgeState.account.blockIntervalRequirement),
     ...tracked
   };
 }

@@ -110,17 +110,17 @@ describe("tracking a Base transaction", () => {
   });
 
   it("estimates the root ETA from Base finality", () => {
-    const eta = estimateRootEta(1_000n, 900n, 1_000n, 300n);
+    const eta = estimateRootEta(1_000n, 1_000n, 300n);
     expect(eta.eligibleRootBlock).toBe(1_200n);
     expect(eta.seconds).toBe(200 * NETWORK.base.blockTimeSeconds + ROOT_REGISTRATION_DELAY_SECONDS);
-    expect(estimateRootEta(1_200n, 900n, 5_000n, 300n).seconds).toBe(ROOT_REGISTRATION_DELAY_SECONDS);
+    expect(estimateRootEta(1_200n, 5_000n, 300n).seconds).toBe(ROOT_REGISTRATION_DELAY_SECONDS);
   });
 });
 
 describe("amounts and route keys", () => {
   it("parses amounts strictly", () => {
     expect(parseAmount("1.5", 6)).toBe(1_500_000n);
-    expect(parseAmount("1,000", 0)).toBe(1_000n);
+    expect(() => parseAmount("1,5", 6)).toThrow(/plain number/); // a decimal comma must not become 15
     expect(() => parseAmount("", 6)).toThrow(/Enter an amount/);
     expect(() => parseAmount("0", 6)).toThrow(/greater than zero/);
     expect(() => parseAmount("1.1234567", 6)).toThrow(/6 decimal/);
@@ -159,5 +159,14 @@ describe("fees and errors", () => {
     expect(explainTransactionError({ InstructionError: [0, { Custom: 12400 }] }, programs)).not.toMatch(/InvalidProof/);
     expect(explainTransactionError("InsufficientFundsForFee", programs)).toMatch(/enough SOL/);
     expect(explainTransactionError({ InstructionError: [1, "Custom"] }, programs, ["Transfer: insufficient lamports 5, need 10"])).toMatch(/enough SOL/);
+  });
+});
+
+describe("error names from program logs", () => {
+  it("reads the Anchor error name and number from logs", async () => {
+    const { explainLogs } = await import("../../src/core/errors");
+    expect(explainLogs(["Program log: AnchorError occurred. Error Code: AlreadyExecuted. Error Number: 12501. Error Message: Already executed."])).toMatch(/already been claimed.*AlreadyExecuted/);
+    expect(explainLogs(["Program log: AnchorError occurred. Error Code: Spoofed. Error Number: 12501."])).toBeUndefined();
+    expect(explainLogs(["unrelated"])).toBeUndefined();
   });
 });

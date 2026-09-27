@@ -1,13 +1,13 @@
 import { batch, computed, effect, signal } from "@preact/signals";
+import { address } from "@solana/kit";
 import type { WalletAccount } from "@wallet-standard/base";
 import { formatUnits, isAddress, type Address, type Hex } from "viem";
 
 import { NETWORK } from "../config";
 import { getBaseArchiveClient, getBaseClient } from "../chain/base";
-import { findUpgradedComponents } from "../chain/pins";
 import { getSolanaRpc } from "../chain/solana";
 import { executeClaim, prepareClaim, type ClaimProgress, type PreparedClaim } from "../core/claim";
-import { describeError } from "../core/errors";
+import { describeError, isWalletRejection, UserFacingError } from "../core/errors";
 import { buildRoute, inspectToken, routeKey, type Route, type TokenInspection } from "../core/route";
 import { parseTxHash, trackTransaction, type TrackStatus } from "../core/status";
 import { forgetBurn, loadHistory, loadPreference, rememberBurn, savePreference, type HistoryEntry } from "../core/storage";
@@ -187,8 +187,7 @@ export async function reviewRoute(): Promise<Route | null> {
   try {
     // Refresh the balance with the connected account, then validate everything.
     const fresh = await inspectToken({ token: inspected.value.wrapper.address, holder: evm, base: getBaseClient(), rpc: getSolanaRpc() });
-    const epoch = await getSolanaRpc().getEpochInfo().send().then((info: { epoch: bigint | number }) => BigInt(info.epoch)).catch(() => null);
-    const built = await buildRoute({ inspection: fresh, amountInput: amountInput.value, evmAccount: evm, recipientWallet: recipient as never, base: getBaseClient(), rpc: getSolanaRpc(), currentEpoch: epoch });
+    const built = await buildRoute({ inspection: fresh, amountInput: amountInput.value, evmAccount: evm, recipientWallet: address(recipient), base: getBaseClient(), rpc: getSolanaRpc() });
     if (request !== routeRequest || keyAtStart !== currentRouteKey.value) return null; // inputs changed meanwhile
     inspection.value = { status: "ready", value: fresh };
     route.value = { status: "ready", value: built };
@@ -206,12 +205,30 @@ export async function burn(): Promise<void> {
   burnState.value = loading;
   try {
     // Re-validate immediately before signing; abort if anything moved.
+    const acknowledged = new Set(reviewed.findings.map((finding) => finding.code));
     const fresh = await reviewRoute();
     if (!fresh || fresh.key !== reviewed.key) throw new Error("The route changed while it was being re-checked. Review it again before burning.");
     if (fresh.findings.some((finding) => finding.level === "block")) throw new Error("A pre-burn check failed. Review the route again.");
+    if (fresh.findings.some((finding) => !acknowledged.has(finding.code))) {
+      throw new Error("A new warning appeared while re-checking. Read it and confirm again before burning.");
+    }
+    acknowledgedWarnings.value = true;
     if (!evmOnBase.value) await switchEvmToBase();
+    if (!evmOnBase.value) throw new UserFacingError(`Switch your Base wallet to ${NETWORK.base.chain.name}, then burn again. Nothing was sent.`);
 
-    const hash = await sendBurn(wallet, fresh.evmAccount, fresh.transfer);
+    let hash: Hex;
+    try {
+      hash = await sendBurn(wallet, fresh.evmAccount, fresh.transfer);
+    } catch (error) {
+      if (isWalletRejection(error)) throw error;
+      // The wallet may have broadcast the burn even though it returned an error. Never leave a
+      // one-click retry that could burn twice.
+      route.value = idle;
+      throw new UserFacingError(
+        "Your wallet did not confirm whether the burn was sent. Check your wallet's activity before doing anything else: if the burn is there, paste its hash under Track & claim. Only review and burn again if it is not.",
+        describeError(error).detail ?? describeError(error).message
+      );
+    }
     burnState.value = { status: "ready", value: hash };
     history.value = rememberBurn({
       txHash: hash,
@@ -352,8 +369,6 @@ export async function runClaim(): Promise<void> {
 // Startup
 // ---------------------------------------------------------------------------------------------
 
-export const upgradedComponents = signal<string[]>([]);
-
 export function startApp(): void {
   discoverEvmWallets((wallets) => {
     evmWallets.value = wallets;
@@ -385,8 +400,4 @@ export function startApp(): void {
 
   const queryTx = new URLSearchParams(window.location.search).get("tx");
   if (queryTx) void track(queryTx);
-
-  void findUpgradedComponents(getBaseClient(), getSolanaRpc())
-    .then((changed) => (upgradedComponents.value = changed))
-    .catch(() => undefined);
 }

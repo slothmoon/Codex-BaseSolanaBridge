@@ -9,11 +9,21 @@ import { addressToBytes32Hex, bytes32HexToAddress } from "../protocol/bytes";
 import { decodeMint, decodeTokenAccount, type MintAccount } from "../protocol/accounts";
 import { NATIVE_SOL_REMOTE_TOKEN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
 import { findSolVaultPda, findTokenVaultPda } from "../protocol/instructions";
-import { assessDestination, assessMint, assessVault, transferFeeFor, type Finding } from "../protocol/token2022";
 import { loadBridgeState } from "./status";
 import { UserFacingError } from "./errors";
+import { rehearseRelease } from "./rehearsal";
 
 const U64_MAX = (1n << 64n) - 1n;
+
+export type Finding = { level: "block" | "warn"; code: string; message: string };
+
+/** Shown for every Token-2022 return (same guidance as v1). */
+export const TOKEN_2022_WARNING: Finding = {
+  level: "warn",
+  code: "token-2022",
+  message:
+    "Token-2022 route: test with a small amount first. Token-2022 extensions can charge transfer fees, change the amount received, or prevent the Solana claim. Confirm a small return reaches your Solana wallet before burning the rest. A failed claim does not undo the Base burn."
+};
 
 export type TokenInspection = {
   wrapper: WrapperInfo;
@@ -21,7 +31,6 @@ export type TokenInspection = {
   /** SPL mint on Solana (absent for SOL). */
   mint: { address: SolanaAddress; tokenProgram: SolanaAddress; account: MintAccount; isToken2022: boolean } | null;
   vault: { address: SolanaAddress; balance: bigint };
-  solanaBridgePaused: boolean;
   findings: Finding[];
 };
 
@@ -56,7 +65,7 @@ export async function inspectToken(input: { token: string; holder: Address | nul
     if (wrapper.decimals !== 9) findings.push({ level: "block", code: "decimals", message: "The SOL wrapper does not use 9 decimals." });
     const vaultAddress = await findSolVaultPda(program);
     const [vault] = await fetchAccounts(input.rpc, [vaultAddress]);
-    return { wrapper, kind: "sol", mint: null, vault: { address: vaultAddress, balance: vault?.lamports ?? 0n }, solanaBridgePaused: bridgeState.account.paused, findings };
+    return { wrapper, kind: "sol", mint: null, vault: { address: vaultAddress, balance: vault?.lamports ?? 0n }, findings };
   }
 
   const mintAddress = bytes32HexToAddress(wrapper.remoteToken);
@@ -68,7 +77,8 @@ export async function inspectToken(input: { token: string; holder: Address | nul
   }
   const isToken2022 = mintAccount.owner === TOKEN_2022_PROGRAM;
   const mint = decodeMint(mintAccount.data);
-  findings.push(...assessMint(mint, isToken2022));
+  if (!mint.isInitialized) findings.push({ level: "block", code: "mint-uninitialized", message: "The Solana mint is not initialized." });
+  if (isToken2022) findings.push(TOKEN_2022_WARNING);
   if (mint.decimals !== wrapper.decimals) {
     findings.push({ level: "block", code: "decimals", message: `Decimals differ: the Base wrapper uses ${wrapper.decimals}, the Solana mint uses ${mint.decimals}.` });
   }
@@ -83,7 +93,6 @@ export async function inspectToken(input: { token: string; holder: Address | nul
     if (vault.mint !== mintAddress || vault.owner !== vaultAddress) {
       findings.push({ level: "block", code: "vault-mismatch", message: "The bridge vault does not match this token." });
     }
-    findings.push(...assessVault(vault));
     vaultBalance = vault.amount;
   }
 
@@ -92,13 +101,12 @@ export async function inspectToken(input: { token: string; holder: Address | nul
     kind: "spl",
     mint: { address: mintAddress, tokenProgram: mintAccount.owner, account: mint, isToken2022 },
     vault: { address: vaultAddress, balance: vaultBalance },
-    solanaBridgePaused: bridgeState.account.paused,
     findings
   };
 }
 
 export function parseAmount(input: string, decimals: number): bigint {
-  const value = input.trim().replace(/,/g, "");
+  const value = input.trim();
   if (!value) throw new UserFacingError("Enter an amount.");
   const match = /^(\d+)(?:\.(\d+))?$/.exec(value);
   if (!match) throw new UserFacingError("Enter a plain number, like 1.5.");
@@ -135,7 +143,6 @@ export async function buildRoute(input: {
   recipientWallet: SolanaAddress;
   base: PublicClient;
   rpc: SolanaRpc;
-  currentEpoch: bigint | null;
 }): Promise<Route> {
   const { inspection, rpc } = input;
   const { wrapper } = inspection;
@@ -174,11 +181,43 @@ export async function buildRoute(input: {
     destination = ata;
     const [account] = await fetchAccounts(rpc, [ata]);
     destinationExists = Boolean(account);
-    if (account) findings.push(...assessDestination(decodeTokenAccount(account.data)));
     if (amount > inspection.vault.balance) {
       findings.push({ level: "block", code: "vault-balance", message: `The bridge vault holds ${formatUnits(inspection.vault.balance, wrapper.decimals)} ${wrapper.symbol}.` });
     }
-    if (mint.isToken2022) expectedReceived = amount - transferFeeFor(amount, mint.account.extensions, input.currentEpoch);
+  }
+
+  // Dry-run the release exactly as the claim will perform it. The token program decides; nothing is sent.
+  if (!findings.some((finding) => finding.level === "block")) {
+    const mint = inspection.mint;
+    const rehearsal = inspection.kind === "sol" || !mint
+      ? await rehearseRelease({ kind: "sol", rpc, amount, recipient: input.recipientWallet })
+      : await rehearseRelease({
+          kind: "spl",
+          rpc,
+          amount,
+          mint: mint.address,
+          decimals: mint.account.decimals,
+          tokenProgram: mint.tokenProgram,
+          vault: inspection.vault.address,
+          destination,
+          createForOwner: destinationExists ? null : input.recipientWallet
+        });
+    if (!rehearsal.ok) {
+      findings.push({
+        level: "block",
+        code: "release-dry-run",
+        message: `A dry run of the release from the bridge vault to your wallet fails right now (${rehearsal.reason}). Burning now would leave your tokens stuck in the bridge until that changes.`
+      });
+    } else {
+      expectedReceived = rehearsal.received;
+      if (rehearsal.received < amount) {
+        findings.push({
+          level: "warn",
+          code: "release-shortfall",
+          message: `The dry run shows you would receive ${formatUnits(rehearsal.received, wrapper.decimals)} ${wrapper.symbol}, not ${formatUnits(amount, wrapper.decimals)} — the token takes a fee on transfer.`
+        });
+      }
+    }
   }
 
   const transfer = { localToken: wrapper.address, remoteToken: wrapper.remoteToken, to: addressToBytes32Hex(destination), remoteAmount: amount };

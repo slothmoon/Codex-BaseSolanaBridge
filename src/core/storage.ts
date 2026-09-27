@@ -1,4 +1,3 @@
-import type { Address } from "@solana/kit";
 import { isHash, type Hex } from "viem";
 
 import { NETWORK } from "../config";
@@ -51,26 +50,6 @@ export function forgetBurn(txHash: Hex): HistoryEntry[] {
   const next = loadHistory().filter((item) => item.txHash.toLowerCase() !== txHash.toLowerCase());
   write("history", next);
   return next;
-}
-
-/** A prove buffer is tied to the output root its proof was generated against. */
-export type BufferRecord = { address: Address; rootBlock: string; payer: Address };
-
-export function loadBufferRecord(messageHash: Hex): BufferRecord | null {
-  const records = read<Record<string, BufferRecord>>("buffers", {});
-  return records[messageHash.toLowerCase()] ?? null;
-}
-
-export function saveBufferRecord(messageHash: Hex, record: BufferRecord): void {
-  const records = read<Record<string, BufferRecord>>("buffers", {});
-  records[messageHash.toLowerCase()] = record;
-  write("buffers", records);
-}
-
-export function clearBufferRecord(messageHash: Hex): void {
-  const records = read<Record<string, BufferRecord>>("buffers", {});
-  delete records[messageHash.toLowerCase()];
-  write("buffers", records);
 }
 
 export function loadPreference(key: string): string | null {

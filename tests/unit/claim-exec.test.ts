@@ -5,83 +5,60 @@ import {
   decompileTransactionMessage,
   generateKeyPairSigner,
   getCompiledTransactionMessageDecoder,
-  getPublicKeyFromAddress,
   getTransactionDecoder,
   getTransactionEncoder,
   partiallySignTransaction,
-  verifySignature,
   type Address,
   type KeyPairSigner,
   type Transaction
 } from "@solana/kit";
 import { getSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
-import { describe, expect, it, vi } from "vitest";
+import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { bytesToHex, hexToBytes } from "viem";
+import { describe, expect, it } from "vitest";
 
-import { containsInOrder, executeClaim, validateWalletSignature, type PreparedClaim, type SolanaSigner } from "../../src/core/claim";
+import { checkWalletSignature, executeClaim, type PreparedClaim, type SolanaSigner } from "../../src/core/claim";
 import { planClaim, type ClaimPlan } from "../../src/core/claim-plan";
 import type { SolanaRpc } from "../../src/chain/solana";
 import { buildTransaction } from "../../src/core/tx";
-import { hasPrefix } from "../../src/protocol/bytes";
-import { INSTRUCTION_DISCRIMINATORS } from "../../src/protocol/constants";
 import { findBridgePda, findOutputRootPda, relayRemainingAccounts } from "../../src/protocol/instructions";
 import { decodeBridgeMessage } from "../../src/protocol/message";
-import { hexToBytes, bytesToHex } from "viem";
-import { mainnet, message, program } from "../helpers";
+import { message, program } from "../helpers";
 
 const encoder = getTransactionEncoder();
 const decoder = getTransactionDecoder();
+const BLOCKHASH = blockhash("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi");
 
-function walletFor(keys: KeyPairSigner, tamper?: (tx: Transaction) => Transaction | Promise<Transaction>): SolanaSigner {
+/** A fake wallet that signs with a real key, optionally editing the transaction first. */
+function walletFor(keys: KeyPairSigner, edit?: (tx: Transaction) => Transaction): SolanaSigner {
   return {
     address: keys.address,
     supportsV1: false,
     async signTransaction(wire) {
       let tx = decoder.decode(wire) as Transaction;
-      if (tamper) tx = await tamper(tx);
-      const signed = await partiallySignTransaction([keys.keyPair], tx as never);
-      return new Uint8Array(encoder.encode(signed));
+      if (edit) tx = edit(tx);
+      return new Uint8Array(encoder.encode(await partiallySignTransaction([keys.keyPair], tx as never)));
     }
   };
 }
 
-type FakeOptions = {
-  simulate?: (index: number) => { err: unknown; logs?: string[]; unitsConsumed?: bigint };
-  status?: (signature: string) => { err: unknown; confirmationStatus: string } | null;
-  blockHeight?: bigint;
-};
-
-function fakeRpc(options: FakeOptions = {}) {
+function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; blockHeight?: bigint } = {}) {
   const sent: string[] = [];
-  let simulations = 0;
   const rpc = {
-    getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: blockhash("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi"), lastValidBlockHeight: 100n } }) }),
-    simulateTransaction: () => ({ send: async () => ({ value: options.simulate?.(simulations++) ?? { err: null, logs: [], unitsConsumed: 50_000n, loadedAccountsDataSize: 900_000 } }) }),
+    getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 100n } }) }),
+    simulateTransaction: () => ({ send: async () => ({ value: options.simulate?.() ?? { err: null, logs: [], unitsConsumed: 50_000n, loadedAccountsDataSize: 900_000 } }) }),
     sendTransaction: (wire: string) => ({ send: async () => { sent.push(wire); return "sig"; } }),
-    getSignatureStatuses: (signatures: string[]) => ({ send: async () => ({ value: [options.status ? options.status(signatures[0]) : { err: null, confirmationStatus: "confirmed" }] }) }),
+    getSignatureStatuses: () => ({ send: async () => ({ value: [options.landed === false ? null : { err: null, confirmationStatus: "confirmed" }] }) }),
     getBlockHeight: () => ({ send: async () => options.blockHeight ?? 10n })
   };
   return { rpc: rpc as unknown as SolanaRpc, sent };
 }
 
-async function prepared(payer: Address, plan: ClaimPlan): Promise<PreparedClaim> {
-  const fixture = message("spl");
-  return {
-    status: { event: { messageHash: fixture.messageHash } } as never,
-    payer,
-    plan,
-    priorityFee: 20_000n,
-    findings: [],
-    destination: { address: payer, created: false },
-    rootBlock: BigInt(mainnet.outputRoot.block),
-    cost: { networkFees: 0n, newAccountRent: 0n, refundableRent: 0n, required: 0n, balance: 10n ** 9n }
-  };
-}
-
-async function planFor(payer: Address, proofLength: number, force?: ClaimPlan["strategy"]) {
+async function planFor(payer: Address, proofLength: number): Promise<ClaimPlan> {
   const fixture = message("spl");
   const data = hexToBytes(fixture.data);
   const decoded = decodeBridgeMessage(data);
-  if (decoded.type !== "transfer") throw new Error();
+  if (decoded.type !== "transfer") throw new Error("fixture must be a transfer");
   return planClaim(
     {
       program,
@@ -94,130 +71,98 @@ async function planFor(payer: Address, proofLength: number, force?: ClaimPlan["s
       messageData: data,
       proofState: { kind: "unproven", outputRoot: await findOutputRootPda(program, 1n), proof: Array.from({ length: proofLength }, (_, i) => bytesToHex(new Uint8Array(32).fill(i + 1))) },
       createDestination: null,
-      relayRemainingAccounts: await relayRemainingAccounts(program, decoded.transfer, (await import("@solana-program/token")).TOKEN_PROGRAM_ADDRESS),
-      existingBuffer: null
+      relayRemainingAccounts: await relayRemainingAccounts(program, decoded.transfer, TOKEN_PROGRAM_ADDRESS)
     },
-    { supportsV1: false, createBufferSigner: () => generateKeyPairSigner(), force }
+    { supportsV1: false }
   );
 }
 
-const run = (prep: PreparedClaim, signer: SolanaSigner, rpc: SolanaRpc, isAlreadyClaimed = async () => false) =>
-  executeClaim({ prepared: prep, signer, rpc, onProgress: () => undefined, isAlreadyClaimed });
+const prepared = (payer: Address, plan: ClaimPlan): PreparedClaim => ({
+  status: {} as never,
+  payer,
+  plan,
+  priorityFee: 20_000n,
+  cost: { networkFees: 0n, newAccountRent: 0n, required: 0n, balance: 10n ** 9n }
+});
+
+const run = (plan: ClaimPlan, signer: SolanaSigner, payer: Address, rpc: SolanaRpc, isAlreadyClaimed = async () => false) =>
+  executeClaim({ prepared: prepared(payer, plan), signer, rpc, onProgress: () => undefined, isAlreadyClaimed });
 
 describe("claim execution", () => {
-  it("simulates, right-sizes compute, signs and confirms every step in order", async () => {
+  it("simulates, right-sizes compute, signs and confirms each transaction in order", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 20, "split");
-    expect(plan.txs.length).toBe(2);
+    const plan = await planFor(keys.address, 20);
+    expect(plan.strategy).toBe("split");
     const { rpc, sent } = fakeRpc();
     const progress: string[] = [];
-    const result = await executeClaim({ prepared: await prepared(keys.address, plan), signer: walletFor(keys), rpc, onProgress: (p) => progress.push(`${p.index}:${p.phase}`), isAlreadyClaimed: async () => false });
+    const result = await executeClaim({ prepared: prepared(keys.address, plan), signer: walletFor(keys), rpc, onProgress: (p) => progress.push(`${p.index}:${p.phase}`), isAlreadyClaimed: async () => false });
     expect(result.signatures).toHaveLength(2);
     expect(sent).toHaveLength(2);
     expect(progress).toEqual(["0:simulating", "0:signing", "0:sending", "0:confirming", "0:confirmed", "1:simulating", "1:signing", "1:sending", "1:confirming", "1:confirmed"]);
 
-    // The broadcast transaction carries a compute limit sized from the simulation, not the 1.4M maximum.
+    // The compute limit comes from the simulation, not the 1.4M maximum.
     const broadcast = decoder.decode(Uint8Array.from(atob(sent[0]), (c) => c.charCodeAt(0))) as Transaction;
-    const instructions = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(broadcast.messageBytes)).instructions;
-    const limitIx = instructions.find((ix) => ix.data?.[0] === 2)!;
-    expect(new DataView(limitIx.data!.buffer, limitIx.data!.byteOffset).getUint32(1, true)).toBe(Math.ceil(50_000 * 1.2) + 3_000);
+    const limit = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(broadcast.messageBytes)).instructions.find((ix) => ix.data?.[0] === 2)!;
+    expect(new DataView(limit.data!.buffer, limit.data!.byteOffset).getUint32(1, true)).toBe(Math.ceil(50_000 * 1.2) + 3_000);
   });
 
-  it("explains bridge program errors by name and sends nothing", async () => {
+  it("names bridge program errors and sends nothing when simulation fails", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 4);
     const { rpc, sent } = fakeRpc({ simulate: () => ({ err: { InstructionError: [3, { Custom: 12501 }] }, logs: [] }) });
-    await expect(run(await prepared(keys.address, plan), walletFor(keys), rpc)).rejects.toThrow(/already been claimed.*AlreadyExecuted/);
+    await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).rejects.toThrow(/already been claimed.*AlreadyExecuted/);
     expect(sent).toHaveLength(0);
   });
 
-  it("rejects a wallet that drops or alters a bridge instruction", async () => {
+  it("accepts a wallet that adds its own instruction before signing", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 4);
     const { rpc, sent } = fakeRpc();
-    const dropRelay = walletFor(keys, (tx) => {
-      const message = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(tx.messageBytes));
-      const kept = { ...message, instructions: message.instructions.filter((ix) => !hasPrefix(ix.data ?? [], INSTRUCTION_DISCRIMINATORS.relayMessage)) };
-      return compileTransaction(kept as never) as Transaction;
-    });
-    await expect(run(await prepared(keys.address, plan), dropRelay, rpc)).rejects.toThrow(/removed or altered/);
-    expect(sent).toHaveLength(0);
-  });
-
-  it("accepts a wallet that only adds its own instruction", async () => {
-    const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 4);
-    const { rpc, sent } = fakeRpc();
-    const addsIx = walletFor(keys, (tx) => {
+    const addsFee = walletFor(keys, (tx) => {
       const message = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(tx.messageBytes));
       return compileTransaction(appendTransactionMessageInstruction(getSetComputeUnitPriceInstruction({ microLamports: 1n }), message as never) as never) as Transaction;
     });
-    await expect(run(await prepared(keys.address, plan), addsIx, rpc)).resolves.toMatchObject({ alreadyClaimed: false });
+    await expect(run(await planFor(keys.address, 4), addsFee, keys.address, rpc)).resolves.toMatchObject({ alreadyClaimed: false });
     expect(sent).toHaveLength(1);
   });
 
-  it("adds the buffer signer's signature after the wallet signs", async () => {
+  it("stops when someone else completes the claim midway", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 40, "buffered");
     const { rpc, sent } = fakeRpc();
-    await run(await prepared(keys.address, plan), walletFor(keys), rpc);
-    const first = decoder.decode(Uint8Array.from(atob(sent[0]), (c) => c.charCodeAt(0))) as Transaction;
-    const bufferSigner = plan.txs[0].signers[0];
-    for (const signer of [keys.address, bufferSigner.address]) {
-      const signature = first.signatures[signer];
-      expect(signature).toBeTruthy();
-      expect(await verifySignature(await getPublicKeyFromAddress(signer), signature!, first.messageBytes)).toBe(true);
-    }
-  });
-
-  it("stops early when someone else completes the claim", async () => {
-    const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 20, "split");
-    const { rpc, sent } = fakeRpc();
-    const result = await run(await prepared(keys.address, plan), walletFor(keys), rpc, async () => true);
+    const result = await run(await planFor(keys.address, 20), walletFor(keys), keys.address, rpc, async () => true);
     expect(result).toEqual({ signatures: [expect.any(String)], alreadyClaimed: true });
     expect(sent).toHaveLength(1);
   });
 
-  it("reports an expired step without claiming success", async () => {
+  it("reports an expired transaction without claiming success", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 4);
-    const { rpc } = fakeRpc({ status: () => null, blockHeight: 101n });
-    await expect(run(await prepared(keys.address, plan), walletFor(keys), rpc)).rejects.toThrow(/did not land before its blockhash expired/);
+    const { rpc } = fakeRpc({ landed: false, blockHeight: 101n });
+    await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).rejects.toThrow(/did not land before its blockhash expired/);
   });
 
   it("refuses to run if the connected wallet changed after review", async () => {
     const keys = await generateKeyPairSigner();
     const other = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 4);
-    await expect(run(await prepared(keys.address, plan), walletFor(other), fakeRpc().rpc)).rejects.toThrow(/wallet changed/);
+    await expect(run(await planFor(keys.address, 4), walletFor(other), keys.address, fakeRpc().rpc)).rejects.toThrow(/wallet changed/);
   });
 });
 
-describe("wallet signature validation", () => {
-  it("rejects an invalid signature and a changed fee payer", async () => {
+describe("wallet signature check", () => {
+  const build = async (payer: Address) =>
+    buildTransaction({ version: 0, feePayer: payer, instructions: (await planFor(payer, 2)).txs[0].instructions, blockhash: BLOCKHASH, lastValidBlockHeight: 1n, computeUnitLimit: 1000, microLamportsPerComputeUnit: 1n });
+
+  it("accepts a transaction signed by the connected account", async () => {
     const keys = await generateKeyPairSigner();
-    const other = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 2);
-    const tx = buildTransaction({ version: 0, feePayer: keys.address, instructions: plan.txs[0].instructions, blockhash: blockhash("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi"), lastValidBlockHeight: 1n, computeUnitLimit: 1000, microLamportsPerComputeUnit: 1n });
-
-    const forged = { ...tx, signatures: { ...tx.signatures, [keys.address]: new Uint8Array(64).fill(1) } };
-    await expect(validateWalletSignature(new Uint8Array(encoder.encode(forged as never)), tx, keys.address, plan.txs[0].instructions)).rejects.toThrow(/invalid/);
-
-    const otherPayer = buildTransaction({ version: 0, feePayer: other.address, instructions: plan.txs[0].instructions, blockhash: blockhash("GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi"), lastValidBlockHeight: 1n, computeUnitLimit: 1000, microLamportsPerComputeUnit: 1n });
-    const signedByOther = await partiallySignTransaction([other.keyPair], otherPayer as never);
-    await expect(validateWalletSignature(new Uint8Array(encoder.encode(signedByOther)), tx, keys.address, plan.txs[0].instructions)).rejects.toThrow(/did not sign/);
+    const signed = await partiallySignTransaction([keys.keyPair], (await build(keys.address)) as never);
+    await expect(checkWalletSignature(new Uint8Array(encoder.encode(signed)), keys.address)).resolves.toBeTruthy();
   });
 
-  it("matches instructions in order, byte for byte", async () => {
+  it("rejects a forged signature, a missing signature and a different fee payer", async () => {
     const keys = await generateKeyPairSigner();
-    const plan = await planFor(keys.address, 2);
-    const ixs = plan.txs[0].instructions;
-    expect(containsInOrder(ixs, ixs)).toBe(true);
-    expect(containsInOrder([...ixs].reverse(), ixs)).toBe(false);
-    expect(containsInOrder(ixs.slice(1), ixs)).toBe(false);
-    const changed = { ...ixs[0], data: new Uint8Array(ixs[0].data!).map((byte, i) => (i === 9 ? byte ^ 1 : byte)) };
-    expect(containsInOrder([changed, ...ixs.slice(1)], ixs)).toBe(false);
-    vi.restoreAllMocks();
+    const other = await generateKeyPairSigner();
+    const tx = await build(keys.address);
+    const forged = { ...tx, signatures: { ...tx.signatures, [keys.address]: new Uint8Array(64).fill(1) } };
+    await expect(checkWalletSignature(new Uint8Array(encoder.encode(forged as never)), keys.address)).rejects.toThrow(/did not sign/);
+    await expect(checkWalletSignature(new Uint8Array(encoder.encode(tx)), keys.address)).rejects.toThrow(/did not sign/);
+    const otherPayer = await partiallySignTransaction([other.keyPair], (await build(other.address)) as never);
+    await expect(checkWalletSignature(new Uint8Array(encoder.encode(otherPayer)), keys.address)).rejects.toThrow(/different fee payer/);
   });
 });

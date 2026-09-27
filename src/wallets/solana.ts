@@ -68,10 +68,6 @@ export function watchSolanaWallet(wallet: Wallet, onAccount: (account: WalletAcc
   });
 }
 
-export function supportsV1(wallet: Wallet): boolean {
-  return features(wallet)[SolanaSignTransaction].supportedTransactionVersions.includes(1);
-}
-
 /** Adapts a Wallet Standard account into the minimal signer the claim flow needs. */
 export function toSolanaSigner(wallet: Wallet, account: WalletAccount): SolanaSigner {
   const feature = features(wallet)[SolanaSignTransaction];

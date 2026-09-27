@@ -66,7 +66,7 @@ export function ReturnCard() {
           <div class="token-title">
             <strong>{info.wrapper.symbol}</strong>
             <span class="muted">{info.wrapper.name}</span>
-            <span class="pill pill-success"><Icon name="check" /> Official wrapper</span>
+            <span class="pill pill-success"><Icon name="check" /> Bridge wrapper</span>
           </div>
           <dl class="rows">
             <Row label="Returns as">{info.kind === "sol" ? "Native SOL" : info.mint!.isToken2022 ? "SPL token (Token-2022)" : "SPL token"}</Row>
@@ -109,6 +109,7 @@ export function ReturnCard() {
             <Row label="You burn on Base">{formatAmount(reviewed.amount, reviewed.inspection.wrapper.decimals, 9)} {reviewed.inspection.wrapper.symbol}</Row>
             <Row label="You receive on Solana">
               <strong>{formatAmount(reviewed.expectedReceived, reviewed.inspection.wrapper.decimals, 9)} {reviewed.inspection.kind === "sol" ? "SOL" : reviewed.inspection.wrapper.symbol}</strong>
+              <span class="muted small"> · confirmed by a dry run of the release</span>
             </Row>
             <Row label="Recipient wallet"><Mono value={reviewed.recipientWallet} href={solanaExplorerAccount(reviewed.recipientWallet)} /></Row>
             {reviewed.inspection.kind === "spl" && (

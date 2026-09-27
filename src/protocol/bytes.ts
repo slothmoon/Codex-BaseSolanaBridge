@@ -73,13 +73,6 @@ export class ByteReader {
     return value === 1;
   }
 
-  u16(): number {
-    this.need(2);
-    const value = this.view.getUint16(this.offset, true);
-    this.offset += 2;
-    return value;
-  }
-
   u32(): number {
     this.need(4);
     const value = this.view.getUint32(this.offset, true);
@@ -109,12 +102,6 @@ export class ByteReader {
     this.need(length);
     this.offset += length;
   }
-}
-
-export function equalBytes(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }
 
 export function hasPrefix(data: ArrayLike<number>, prefix: ArrayLike<number>): boolean {

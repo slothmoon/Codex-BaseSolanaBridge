@@ -16,7 +16,7 @@ import {
   trackedSince,
   trackInput
 } from "../state/app";
-import { ErrorNotice, Findings, Icon, Mono, Notice, Row, Spinner } from "./components";
+import { ErrorNotice, Icon, Mono, Notice, Row, Spinner } from "./components";
 import { formatAmount, formatDuration, formatSol, timeAgo } from "./format";
 
 export function TrackCard() {
@@ -37,9 +37,10 @@ export function TrackCard() {
           void track();
         }}
       >
-        <span class="field-label">Base transaction hash</span>
+        <label class="field-label" for="track-hash">Base transaction hash</label>
         <div class="input-row">
           <input
+            id="track-hash"
             value={trackInput.value}
             onInput={(event) => (trackInput.value = event.currentTarget.value)}
             placeholder="0x…"
@@ -52,9 +53,11 @@ export function TrackCard() {
         </div>
       </form>
 
-      {tracked.value.status === "loading" && <Spinner label="Reading Base and Solana…" />}
-      {tracked.value.status === "error" && <ErrorNotice message={tracked.value.message} detail={tracked.value.detail} />}
-      {tracked.value.status === "ready" && <StatusView status={tracked.value.value} />}
+      <div aria-live="polite" class="status-region">
+        {tracked.value.status === "loading" && <Spinner label="Reading Base and Solana…" />}
+        {tracked.value.status === "error" && <ErrorNotice message={tracked.value.message} detail={tracked.value.detail} />}
+        {tracked.value.status === "ready" && <StatusView status={tracked.value.value} />}
+      </div>
 
       <HistoryList />
     </section>
@@ -228,10 +231,8 @@ function ClaimPanel() {
             <Row label="Transactions to sign">{prep.value.plan.txs.length}{prep.value.plan.version === 1 ? " (large-transaction format)" : ""}</Row>
             <Row label="Network fees">≈ {formatSol(prep.value.cost.networkFees)}</Row>
             {prep.value.cost.newAccountRent > 0n && <Row label="Account rent">{formatSol(prep.value.cost.newAccountRent)}</Row>}
-            {prep.value.cost.refundableRent > 0n && <Row label="Temporary deposit">{formatSol(prep.value.cost.refundableRent)} (refunded)</Row>}
             <Row label="Paid by">{<Mono value={prep.value.payer} />}</Row>
           </dl>
-          <Findings findings={prep.value.findings} />
           {prep.value.cost.balance < prep.value.cost.required && (
             <Notice tone="warn">
               Your wallet has {formatSol(prep.value.cost.balance)}; this claim needs about {formatSol(prep.value.cost.required)}. Add SOL first or the claim will fail.

@@ -27,15 +27,6 @@ export type NetworkConfig = {
     rpcUrls: string[];
     explorerQuery: string;
   };
-  /**
-   * The deployments this interface was verified against. A mismatch does not block anything,
-   * but the UI warns that the bridge was upgraded after verification.
-   */
-  pins?: {
-    baseBridgeImplementation: `0x${string}`;
-    baseFactoryImplementation: `0x${string}`;
-    solanaProgramDeploySlot: bigint;
-  };
 };
 
 function withOverride(override: string | undefined, defaults: string[]): string[] {
@@ -54,8 +45,15 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
       bridge: "0x3eff766C76a1be2Ce1aCF2B69c78bCae257D5188",
       factory: "0xDD56781d0509650f8C2981231B6C917f2d5d7dF2",
       solWrapper: "0x311935Cd80B76769bF2ecC9D8Ab7635b2139cf82",
-      rpcUrls: withOverride(env.VITE_BASE_RPC_URL, ["https://mainnet.base.org", "https://base-rpc.publicnode.com"]),
-      archiveRpcUrls: withOverride(env.VITE_BASE_ARCHIVE_RPC_URL ?? env.VITE_BASE_RPC_URL, ["https://mainnet.base.org"]),
+      // Latest-state reads feed the burn decision, so only Base-operated endpoints plus publicnode.
+      rpcUrls: withOverride(env.VITE_BASE_RPC_URL, ["https://mainnet.base.org", "https://developer-access-mainnet.base.org", "https://base-rpc.publicnode.com"]),
+      // Historical eth_call for proofs. A third-party fallback is safe here because every proof is
+      // verified against the on-chain Solana output root before anything is signed.
+      archiveRpcUrls: withOverride(env.VITE_BASE_ARCHIVE_RPC_URL ?? env.VITE_BASE_RPC_URL, [
+        "https://mainnet.base.org",
+        "https://developer-access-mainnet.base.org",
+        "https://base.gateway.tenderly.co"
+      ]),
       explorer: "https://basescan.org",
       blockTimeSeconds: 2
     },
@@ -64,11 +62,6 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
       chain: "solana:mainnet",
       rpcUrls: withOverride(env.VITE_SOLANA_RPC_URL, ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]),
       explorerQuery: ""
-    },
-    pins: {
-      baseBridgeImplementation: "0x9b937e776cb00ce79036e58ff1de777df8ebde48",
-      baseFactoryImplementation: "0x92fc5119dc6a68ed161affbe59792aa04d8c375c",
-      solanaProgramDeploySlot: 384_063_455n
     }
   },
   testnet: {

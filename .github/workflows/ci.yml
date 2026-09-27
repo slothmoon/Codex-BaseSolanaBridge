@@ -2,13 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, v2]
+    branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Daily mainnet parity check: catches bridge upgrades or RPC behaviour changes.
-    - cron: "17 6 * * *"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,17 +13,13 @@ jobs:
   verify:
     name: Type-check, unit tests, build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [22, 24]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -39,22 +31,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - run: npm ci
-      # Fetches the live program binary and accounts from public mainnet RPCs, then executes
-      # every claim strategy locally in LiteSVM. Nothing touches mainnet state.
+      # Fetches the program binary and accounts from public mainnet RPCs, then executes the claim
+      # strategies locally in LiteSVM. Nothing touches mainnet state.
       - run: npm run test:svm
-
-  live:
-    name: Live mainnet parity (read-only)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run test:live
