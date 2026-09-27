@@ -24,7 +24,7 @@ import { findOutputRootPda, findTokenVaultPda, relayRemainingAccounts } from "..
 import { verifyMmrProof } from "../protocol/mmr";
 import { planClaim, type ClaimPlan, type ProofState } from "./claim-plan";
 import { explainLogs, explainTransactionError, UserFacingError } from "./errors";
-import { estimatePriorityFee, LAMPORTS_PER_SIGNATURE, priorityFeeLamports } from "./fees";
+import { LAMPORTS_PER_SIGNATURE, PRIORITY_FEE_MICROLAMPORTS, priorityFeeLamports } from "./fees";
 import { rehearseRelease } from "./rehearsal";
 import type { TrackedTransfer } from "./status";
 import { buildTransaction, MAX_COMPUTE_UNITS, MAX_LOADED_ACCOUNTS_DATA } from "./tx";
@@ -160,7 +160,7 @@ export async function prepareClaim(input: {
   );
 
   // ---- Cost ----------------------------------------------------------------------------------
-  const priorityFee = await estimatePriorityFee(rpc, [status.incomingMessage, transfer.to]);
+  const priorityFee = PRIORITY_FEE_MICROLAMPORTS;
   const networkFees = BigInt(plan.txs.length) * (LAMPORTS_PER_SIGNATURE + priorityFeeLamports(ROUGH_UNITS_PER_TX, priorityFee));
   let newAccountRent = destinationRent;
   if (proofState.kind === "unproven") {

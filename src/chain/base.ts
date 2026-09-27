@@ -86,25 +86,17 @@ export type WrapperInfo = {
   bridgePaused: boolean;
 };
 
+/**
+ * One Base call: the factory check, the bridge's pause flag and the wrapper's details. For an address
+ * that isn't a bridge wrapper the detail reads simply fail, and only the factory check matters.
+ */
 export async function readWrapper(client: PublicClient, token: Address, holder: Address | null): Promise<WrapperInfo> {
-  const code = await client.getCode({ address: token });
-  if (!code || code === "0x") throw new Error("There is no contract at that Base address.");
-
-  const [official, bridgePaused] = await client.multicall({
-    allowFailure: false,
+  const wrapper = { address: token, abi: ERC20_WRAPPER_ABI } as const;
+  const [official, paused, remoteToken, decimals, symbol, name, balance] = await client.multicall({
+    allowFailure: true,
     contracts: [
       { address: NETWORK.base.factory, abi: FACTORY_ABI, functionName: "isCrossChainErc20", args: [token] },
-      { address: NETWORK.base.bridge, abi: BRIDGE_ABI, functionName: "paused" }
-    ]
-  });
-  if (!official) {
-    return { address: token, official: false, remoteToken: "0x", decimals: 0, symbol: "", name: "", balance: null, bridgePaused };
-  }
-
-  const wrapper = { address: token, abi: ERC20_WRAPPER_ABI } as const;
-  const [remoteToken, decimals, symbol, name, balance] = await client.multicall({
-    allowFailure: false,
-    contracts: [
+      { address: NETWORK.base.bridge, abi: BRIDGE_ABI, functionName: "paused" },
       { ...wrapper, functionName: "remoteToken" },
       { ...wrapper, functionName: "decimals" },
       { ...wrapper, functionName: "symbol" },
@@ -112,7 +104,23 @@ export async function readWrapper(client: PublicClient, token: Address, holder: 
       { ...wrapper, functionName: "balanceOf", args: [holder ?? "0x0000000000000000000000000000000000000000"] }
     ]
   });
-  return { address: token, official: true, remoteToken, decimals, symbol, name, balance: holder ? balance : null, bridgePaused };
+  if (official.status !== "success" || paused.status !== "success") throw new Error("Could not read the Base bridge contracts. Try again in a moment.");
+  if (!official.result) {
+    return { address: token, official: false, remoteToken: "0x", decimals: 0, symbol: "", name: "", balance: null, bridgePaused: paused.result };
+  }
+  if (remoteToken.status !== "success" || decimals.status !== "success" || symbol.status !== "success" || name.status !== "success" || balance.status !== "success") {
+    throw new Error("Could not read this bridge wrapper's details. Try again in a moment.");
+  }
+  return {
+    address: token,
+    official: true,
+    remoteToken: remoteToken.result,
+    decimals: decimals.result,
+    symbol: symbol.result,
+    name: name.result,
+    balance: holder ? balance.result : null,
+    bridgePaused: paused.result
+  };
 }
 
 export type BridgeEvent = { messageHash: Hex; nonce: bigint; sender: Hex; data: Hex };

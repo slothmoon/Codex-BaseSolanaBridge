@@ -7,7 +7,7 @@ import type { SolanaRpc } from "../../src/chain/solana";
 import { NETWORK } from "../../src/config";
 import { parseAmount, routeKey } from "../../src/core/route";
 import { estimateRootEta, parseTxHash, ROOT_REGISTRATION_DELAY_SECONDS, trackTransaction } from "../../src/core/status";
-import { choosePriorityFee, MAX_PRIORITY_FEE, MIN_PRIORITY_FEE, priorityFeeLamports } from "../../src/core/fees";
+import { priorityFeeLamports } from "../../src/core/fees";
 import { describeError, explainTransactionError } from "../../src/core/errors";
 import { addressToBytes } from "../../src/protocol/bytes";
 import { SYSTEM_PROGRAM } from "../../src/protocol/constants";
@@ -156,12 +156,9 @@ describe("amounts and route keys", () => {
 });
 
 describe("fees and errors", () => {
-  it("chooses a clamped 75th-percentile priority fee", () => {
-    expect(choosePriorityFee([])).toBe(MIN_PRIORITY_FEE);
-    expect(choosePriorityFee([0n, 0n, 0n])).toBe(MIN_PRIORITY_FEE);
-    expect(choosePriorityFee([10n ** 12n])).toBe(MAX_PRIORITY_FEE);
-    expect(choosePriorityFee([20_000n, 40_000n, 60_000n, 80_000n, 100_000n])).toBe(80_000n);
+  it("converts a per-unit priority fee into lamports, rounding up", () => {
     expect(priorityFeeLamports(200_000, 50_000n)).toBe(10_000n);
+    expect(priorityFeeLamports(1, 1n)).toBe(1n);
   });
 
   it("describes wallet rejections and rate limits plainly", () => {
