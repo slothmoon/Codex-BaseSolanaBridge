@@ -158,7 +158,7 @@ function TransferView({ status }: { status: TrackedTransfer & { state: "waiting-
         <p class="muted small">The claim unlocks once Base finalizes your burn and an output root covering it reaches Solana, typically 20–35 minutes after the burn. This page checks automatically.</p>
       )}
 
-      {(status.state === "ready" || status.state === "proven") && !paused && <ClaimPanel />}
+      {(status.state === "ready" || status.state === "proven") && !paused && <ClaimPanel recipientKnown={status.recipientWallet !== null} />}
 
       <details class="technical">
         <summary>Details</summary>
@@ -188,12 +188,16 @@ function StatusPill({ state, paused }: { state: string; paused: boolean }) {
   return <span class={`pill ${tone}`}>{label}</span>;
 }
 
-function ClaimPanel() {
+function ClaimPanel({ recipientKnown }: { recipientKnown: boolean }) {
   const prep = claimPrep.value;
   const run = claimRun.value;
 
   if (!solanaAddress.value) {
-    return <Notice tone="info">Connect a Solana wallet to claim. Any wallet can pay for the claim; the funds always go to the recipient fixed at burn time.</Notice>;
+    return recipientKnown ? (
+      <Notice tone="info">Connect a Solana wallet to claim. Any wallet can pay for the claim; the funds always go to the recipient fixed at burn time.</Notice>
+    ) : (
+      <Notice tone="info">Connect the recipient's Solana wallet to claim.</Notice>
+    );
   }
 
   if (run.status === "loading") {

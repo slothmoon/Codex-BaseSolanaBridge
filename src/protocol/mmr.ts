@@ -26,12 +26,6 @@ function mountainsFor(leafIndex: bigint, totalLeafCount: bigint): { mountains: M
   return { mountains, leafHeight };
 }
 
-/** Number of proof nodes `Bridge.generateProof(leafIndex)` returns for a tree of `totalLeafCount` leaves. */
-export function mmrProofLength(leafIndex: bigint, totalLeafCount: bigint): number {
-  const { mountains, leafHeight } = mountainsFor(leafIndex, totalLeafCount);
-  return leafHeight + mountains.length - 1;
-}
-
 function compareBytes(a: Uint8Array, b: Uint8Array): number {
   for (let i = 0; i < 32; i++) if (a[i] !== b[i]) return a[i] - b[i];
   return 0;

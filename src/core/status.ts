@@ -153,7 +153,14 @@ async function describeTransfer(transfer: BridgeTransfer, base: PublicClient, rp
   }
   // Token returns name the recipient's token account; its owner is the recipient wallet. An account that
   // doesn't exist yet can't be traced back to its owner.
-  const isTokenAccount = destination !== null && destination.owner === mintAccount.owner;
-  const recipientWallet = isTokenAccount ? decodeTokenAccount(destination.data).owner : null;
+  let recipientWallet: Address | null = null;
+  if (destination && destination.owner === mintAccount.owner) {
+    try {
+      const account = decodeTokenAccount(destination.data);
+      if (account.mint === transfer.mint) recipientWallet = account.owner;
+    } catch {
+      // Not a token account: leave the recipient unknown rather than failing the whole status.
+    }
+  }
   return { asset: { symbol: symbol || "tokens", decimals }, recipientWallet };
 }

@@ -12,9 +12,9 @@ import {
 } from "../../src/protocol/accounts";
 import { concatBytes, u32le } from "../../src/protocol/bytes";
 import { findIncomingMessagePda, findOutputRootPda, findTokenVaultPda } from "../../src/protocol/instructions";
-import { decodeBridgeMessage, encodeTransferMessage, hashBridgeMessage } from "../../src/protocol/message";
-import { mmrProofLength, mmrRootFromProof, verifyMmrProof } from "../../src/protocol/mmr";
-import { fromBase64, mainnet, message, program } from "../helpers";
+import { decodeBridgeMessage } from "../../src/protocol/message";
+import { mmrRootFromProof, verifyMmrProof } from "../../src/protocol/mmr";
+import { encodeTransferMessage, fromBase64, hashBridgeMessage, mainnet, message, program } from "../helpers";
 
 const root = decodeOutputRoot(fromBase64(mainnet.outputRoot.data));
 
@@ -66,12 +66,6 @@ describe("MMR proofs (real mainnet proofs against the on-chain root)", () => {
     }
   });
 
-  it("predicts the proof length Base returns", () => {
-    for (const fixture of mainnet.messages) {
-      expect(mmrProofLength(BigInt(fixture.nonce), root.totalLeafCount)).toBe(fixture.proof.length);
-    }
-  });
-
   it("rejects tampered proofs, wrong leaves and uncovered indexes", () => {
     const fixture = mainnet.messages[0];
     const base = { root: root.root, leafHash: fixture.messageHash, leafIndex: BigInt(fixture.nonce), proof: fixture.proof, totalLeafCount: root.totalLeafCount };
@@ -82,13 +76,6 @@ describe("MMR proofs (real mainnet proofs against the on-chain root)", () => {
     expect(verifyMmrProof({ ...base, leafHash: mainnet.messages[1].messageHash })).toBe(false);
     expect(verifyMmrProof({ ...base, leafIndex: root.totalLeafCount })).toBe(false);
     expect(() => mmrRootFromProof([...fixture.proof, fixture.proof[0]], fixture.messageHash, BigInt(fixture.nonce), root.totalLeafCount)).toThrow(/unused/);
-  });
-
-  it("matches the worst cases from the audit", () => {
-    expect(mmrProofLength(0n, 2988n)).toBe(17);
-    expect(mmrProofLength(0n, 2989n)).toBe(18);
-    expect(mmrProofLength(0n, 4095n)).toBe(22);
-    expect(mmrProofLength(4095n, 4096n)).toBe(12);
   });
 });
 

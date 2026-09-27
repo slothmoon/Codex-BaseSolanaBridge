@@ -8,7 +8,7 @@ There is no backend, database or relayer key. The browser reads public Base and 
 
 1. **Burn on Base.** You burn the bridge wrapper with `Bridge.bridgeToken`. The destination is fixed at this point: your Solana wallet's token account (SPL) or your wallet itself (SOL).
 2. **Wait for an output root.** Once the Base block containing your burn is finalized (~20 min) and an output root covering it is registered on Solana (roots sit at every 300th Base block), the message becomes provable.
-3. **Claim on Solana.** Base → Solana has no automatic relay: someone must submit the claim. The app proves the message against that root (`prove_message`) and releases the funds (`relay_message`). Any wallet can pay for the claim; the funds always go to the recipient fixed at burn time.
+3. **Claim on Solana.** Base → Solana has no automatic relay: someone must submit the claim. The app proves the message against that root (`prove_message`) and releases the funds (`relay_message`). Any wallet can pay for the claim and the funds always go to the recipient fixed at burn time — except an SPL return whose token account doesn't exist yet, which the recipient's own wallet must claim, because the account's owner can't be worked out from its address.
 
 On recent mainnet returns, the covering root arrived 21–34 minutes after the burn.
 
@@ -39,7 +39,7 @@ The review is tied to a key made from every input (token, amount, both wallets).
 | Priority fees | None | 75th-percentile recent fee for the touched accounts, clamped; compute limit sized from simulation |
 | Assets | SPL only | SPL, Token-2022 and native SOL; tracks and claims wrapped-token transfers too |
 | Token safety | Token-2022 warning | A dry run of the exact vault release gates every burn and measures what you receive; Token-2022 keeps the v1 small-amount-first warning |
-| Claim payer | Must be the recipient | Any wallet can pay; the funds still go to the fixed recipient |
+| Claim payer | Must be the recipient | Any wallet can pay (unless the recipient's token account must be created); the funds still go to the fixed recipient |
 | Wallets | `window.ethereum` / `window.solana` | EIP-6963 (pick among installed EVM wallets) and Wallet Standard (Phantom, Solflare, Backpack, …) |
 | Wallet check | Fee payer and signature present | Fee payer unchanged and the connected account's signature verifies |
 | Ambiguous send failures | Warned | If the Base wallet errors without a clear rejection, the review is discarded so a second click can't burn twice |

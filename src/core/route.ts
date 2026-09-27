@@ -186,8 +186,8 @@ export async function buildRoute(input: {
 
   // Dry-run the release exactly as the claim will perform it. The token program decides; nothing is sent.
   if (!findings.some((finding) => finding.level === "block")) {
-    const mint = inspection.mint;
-    const rehearsal = inspection.kind === "sol" || !mint
+    const mint = inspection.mint; // null only for SOL
+    const rehearsal = !mint
       ? await rehearseRelease({ kind: "sol", rpc, amount, recipient: input.recipientWallet })
       : await rehearseRelease({
           kind: "spl",

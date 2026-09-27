@@ -9,6 +9,7 @@ import { parseAmount, routeKey } from "../../src/core/route";
 import { estimateRootEta, parseTxHash, ROOT_REGISTRATION_DELAY_SECONDS, trackTransaction } from "../../src/core/status";
 import { choosePriorityFee, MAX_PRIORITY_FEE, MIN_PRIORITY_FEE, priorityFeeLamports } from "../../src/core/fees";
 import { describeError, explainTransactionError } from "../../src/core/errors";
+import { addressToBytes } from "../../src/protocol/bytes";
 import { SYSTEM_PROGRAM } from "../../src/protocol/constants";
 import { fromBase64, mainnet, message } from "../helpers";
 
@@ -85,9 +86,16 @@ describe("tracking a Base transaction", () => {
     expect(status).toMatchObject({ state: "claimed", asset: { symbol: "neet" }, recipientWallet: null }); // token account not found
 
     // The recipient wallet is the owner recorded in the destination token account.
-    const tokenAccount = { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: fromBase64(mainnet.vaults[0].data) };
+    const tokenData = fromBase64(mainnet.vaults[0].data);
+    tokenData.set(addressToBytes(decoded.transfer.mint), 0); // a token account for this transfer's mint
+    const tokenAccount = { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: tokenData };
     const withAccount = await trackWith(receiptFor(fixture), { ...accounts, [decoded.transfer.to]: tokenAccount }, { symbol: "neet" });
     expect(withAccount).toMatchObject({ recipientWallet: mainnet.vaults[0].address });
+
+    // A destination that isn't a token account leaves the recipient unknown instead of failing the status.
+    const notTokenAccount = { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: fromBase64(mainnet.mints[0].data) };
+    const odd = await trackWith(receiptFor(fixture), { ...accounts, [decoded.transfer.to]: notTokenAccount }, { symbol: "neet" });
+    expect(odd).toMatchObject({ state: "claimed", recipientWallet: null });
   });
 
   it("treats an unproven message as ready once a covering root exists, and waits otherwise", async () => {

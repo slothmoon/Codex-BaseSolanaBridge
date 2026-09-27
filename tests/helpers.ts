@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { address, getBase64Encoder, type Address } from "@solana/kit";
-import type { Hex } from "viem";
+import { hexToBytes, keccak256, type Hex } from "viem";
+
+import { addressToBytes, concatBytes, u32le, u64le } from "../src/protocol/bytes";
+import type { BridgeTransfer } from "../src/protocol/message";
 
 const base64 = getBase64Encoder();
 export const fromBase64 = (value: string) => new Uint8Array(base64.encode(value));
@@ -46,3 +49,21 @@ export function message(kind: "spl" | "sol" | "wrapped", index = 0) {
 }
 
 export const payer = address("DZaZMpR6ZBNPKBqaweGnoPP3QLq3pyoRTDfBpYS1QMU2");
+
+/** Encodes a plain transfer message the way Base's SVMBridgeLib.serializeTransfer does (no follow-up instructions). */
+export function encodeTransferMessage(transfer: BridgeTransfer): Uint8Array {
+  const body =
+    transfer.kind === "sol"
+      ? concatBytes([0], addressToBytes(transfer.to), u64le(transfer.amount))
+      : transfer.kind === "spl"
+        ? concatBytes([1], hexToBytes(transfer.baseToken), addressToBytes(transfer.mint), addressToBytes(transfer.to), u64le(transfer.amount))
+        : concatBytes([2], addressToBytes(transfer.mint), addressToBytes(transfer.to), u64le(transfer.amount));
+  return concatBytes([1], body, u32le(0));
+}
+
+/** `keccak256(nonce_be_u64 || sender || data)`: the leaf hash Base emits and the Solana program recomputes. */
+export function hashBridgeMessage(nonce: bigint, sender: Hex, data: Uint8Array): Hex {
+  const nonceBe = new Uint8Array(8);
+  new DataView(nonceBe.buffer).setBigUint64(0, nonce, false);
+  return keccak256(concatBytes(nonceBe, hexToBytes(sender), data));
+}
