@@ -279,7 +279,6 @@ export async function track(input?: string, quiet = false): Promise<void> {
   }
   trackInput.value = hash;
   if (!quiet || !sameTx) tracked.value = loading;
-  syncUrl(hash);
   try {
     const status = await trackTransaction({ txHash: hash, base: getBaseClient(), rpc: getSolanaRpc() });
     if (request !== trackRequest) return;
@@ -301,16 +300,6 @@ function schedulePoll(status: TrackStatus | null): void {
     if (document.visibilityState === "visible") void track(trackInput.value, true);
     else schedulePoll(status);
   }, status?.state === "not-found" ? 6_000 : 20_000);
-}
-
-function syncUrl(hash: Hex): void {
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set("tx", hash);
-    window.history.replaceState(null, "", url);
-  } catch {
-    // Non-essential.
-  }
 }
 
 export function removeFromHistory(hash: Hex): void {
