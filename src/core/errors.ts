@@ -36,9 +36,11 @@ function firstLine(value: string): string {
 
 function collectMessages(error: unknown): string {
   const parts: string[] = [];
-  for (let current = error as { message?: unknown; shortMessage?: unknown; cause?: unknown } | undefined, depth = 0; current && depth < 6; current = current.cause as never, depth++) {
+  for (let current = error as { message?: unknown; shortMessage?: unknown; details?: unknown; cause?: unknown } | undefined, depth = 0; current && depth < 6; current = current.cause as never, depth++) {
     const text = typeof current.shortMessage === "string" ? current.shortMessage : typeof current.message === "string" ? current.message : typeof current === "string" ? current : "";
     if (text && !parts.includes(text)) parts.push(text);
+    // viem keeps the reason (e.g. "Too Many Requests", "over rate limit") in `details`, not the short message.
+    if (typeof current.details === "string" && current.details && !parts.includes(current.details)) parts.push(current.details);
     if (typeof current !== "object") break;
   }
   return parts.join("\n") || String(error);

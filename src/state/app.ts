@@ -304,12 +304,14 @@ export async function reviewClaim(): Promise<void> {
   claimPrep.value = loading;
   claimRun.value = idle;
   claimProgress.value = [];
+  // Preparing takes a few seconds; if another transaction was tracked meanwhile, drop the result.
+  const stillShown = () => tracked.value.status === "ready" && tracked.value.value.txHash.toLowerCase() === status.txHash.toLowerCase();
   try {
     const signer = toSolanaSigner(wallet.wallet, account);
     const prepared = await prepareClaim({ status, payer: signer.address, supportsV1: signer.supportsV1, rpc: getSolanaRpc(), base: getBaseClient() });
-    claimPrep.value = { status: "ready", value: prepared };
+    if (stillShown()) claimPrep.value = { status: "ready", value: prepared };
   } catch (error) {
-    claimPrep.value = failed(error);
+    if (stillShown()) claimPrep.value = failed(error);
   }
 }
 

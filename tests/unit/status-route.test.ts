@@ -1,5 +1,5 @@
 import { address } from "@solana/kit";
-import { encodeAbiParameters, encodeEventTopics, type PublicClient } from "viem";
+import { encodeAbiParameters, encodeEventTopics, HttpRequestError, type PublicClient } from "viem";
 import { describe, expect, it } from "vitest";
 
 import { BRIDGE_ABI } from "../../src/chain/base";
@@ -167,6 +167,8 @@ describe("fees and errors", () => {
   it("describes wallet rejections and rate limits plainly", () => {
     expect(describeError({ code: 4001, message: "User rejected the request." }).message).toMatch(/rejected the request in your wallet/);
     expect(describeError(new Error("HTTP 429 Too Many Requests")).message).toMatch(/rate limiting/);
+    // viem puts the reason in `details`; the short message alone is just "HTTP request failed."
+    expect(describeError(new HttpRequestError({ url: "https://mainnet.base.org", status: 429, details: "Too Many Requests" })).message).toMatch(/rate limiting/);
   });
 
   it("names bridge errors only when the bridge program raised them", () => {
