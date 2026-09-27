@@ -43,7 +43,7 @@ The review is tied to a key made from every input (token, amount, both wallets).
 | Wallets | `window.ethereum` / `window.solana` | EIP-6963 (pick among installed EVM wallets) and Wallet Standard (Phantom, Solflare, Backpack, …) |
 | Wallet check | Fee payer and signature present | Fee payer unchanged and the connected account's signature verifies |
 | Ambiguous send failures | Warned | If the Base wallet errors without a clear rejection, the review is discarded so a second click can't burn twice |
-| Interrupted claims | Restart | Clicking Claim again continues from on-chain state (e.g. only the release if the proof already landed) |
+| Interrupted claims | Restart | Clicking Review claim again continues from on-chain state (e.g. only the release if the proof already landed) |
 | RPC | Single endpoint | One endpoint per chain (Base serves current and historical reads), each overridable |
 | Status | Manual refresh | Manual refresh (click Track), ETA from Base finality, clear reverted/not-found/not-a-bridge states, local history of your burns |
 | Stack | Vanilla DOM, web3.js v1 | Preact + signals, `@solana/kit` (~1/4 the Solana bundle size), viem |

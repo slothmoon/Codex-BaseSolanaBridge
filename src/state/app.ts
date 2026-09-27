@@ -275,10 +275,9 @@ export async function track(input?: string, quiet = false): Promise<void> {
     tracked.value = failed(error);
     return;
   }
+  const sameTx = isShown(hash); // decided by the transaction, not by whether the card is mid-reload
   shownHash = hash.toLowerCase();
   const request = ++trackRequest;
-  const current = tracked.value;
-  const sameTx = current.status === "ready" && current.value.txHash.toLowerCase() === hash.toLowerCase();
   if (!sameTx) {
     trackedSince.value = Date.now();
     claimPrep.value = idle;
@@ -332,6 +331,7 @@ export async function runClaim(): Promise<void> {
       signer: toSolanaSigner(wallet.wallet, account),
       rpc: getSolanaRpc(),
       onProgress: (progress) => {
+        if (!isShown(prep.status.txHash)) return;
         const list = claimProgress.value.filter((item) => item.index !== progress.index);
         claimProgress.value = [...list, progress].sort((a, b) => a.index - b.index);
       }

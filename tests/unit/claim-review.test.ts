@@ -70,6 +70,24 @@ describe("claim review and claim while the user moves around", () => {
     expect(state.claimRun.value.status).toBe("idle"); // and A's result isn't shown on B
   });
 
+  it("keeps the claim result when the user clicks Track on it just as the claim finishes", async () => {
+    await state.track(A);
+    const review = state.reviewClaim();
+    finishPrepare(undefined);
+    await review;
+    const claim = state.runClaim();
+    let release = () => undefined as void;
+    holdLookup = new Promise((resolve) => (release = resolve));
+    const refresh = state.track(A); // Track clicked on the same transfer; still loading…
+    finishClaim({ signatures: ["sigA"] }); // …when the claim finishes
+    await Promise.resolve();
+    holdLookup = null;
+    release();
+    await Promise.all([claim, refresh]);
+    expect(shown()).toBe(A);
+    expect(state.claimRun.value).toEqual({ status: "ready", value: { signatures: ["sigA"] } });
+  });
+
   it("shows the result of a claim on the transaction it belongs to", async () => {
     await state.track(A);
     const review = state.reviewClaim();
