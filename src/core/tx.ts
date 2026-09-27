@@ -68,8 +68,8 @@ export function buildTransaction(options: BuildOptions): Transaction {
   );
 }
 
-// Any valid 32-byte base58 value works for measuring; sizes do not depend on the blockhash value.
-const PLACEHOLDER_BLOCKHASH = blockhash("11111111111111111111111111111111");
+// Any valid 32-byte base58 value: sizes don't depend on it, and simulations that replace the blockhash ignore it.
+export const PLACEHOLDER_BLOCKHASH = blockhash("11111111111111111111111111111111");
 
 /**
  * Exact wire size of a transaction carrying these instructions plus compute-budget settings.

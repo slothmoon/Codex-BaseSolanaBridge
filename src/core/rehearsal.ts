@@ -7,7 +7,7 @@ import { concatBytes, u32le, u64le } from "../protocol/bytes";
 import { decodeTokenAccount } from "../protocol/accounts";
 import { SYSTEM_PROGRAM } from "../protocol/constants";
 import { findSolVaultPda } from "../protocol/instructions";
-import { buildTransaction } from "./tx";
+import { buildTransaction, PLACEHOLDER_BLOCKHASH } from "./tx";
 
 /**
  * A dry run of the exact token movement the bridge performs when a claim is relayed:
@@ -70,13 +70,13 @@ export async function rehearseRelease(input: RehearsalInput): Promise<ReleaseReh
           )
         ];
 
-  const { value: latest } = await input.rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
+  // The simulation substitutes a recent blockhash (replaceRecentBlockhash), so none needs fetching.
   const transaction = buildTransaction({
     version: 0,
     feePayer: solVault,
     instructions,
-    blockhash: latest.blockhash,
-    lastValidBlockHeight: BigInt(latest.lastValidBlockHeight),
+    blockhash: PLACEHOLDER_BLOCKHASH,
+    lastValidBlockHeight: 0n,
     computeUnitLimit: SIMULATION_COMPUTE_UNITS,
     microLamportsPerComputeUnit: 1n
   });

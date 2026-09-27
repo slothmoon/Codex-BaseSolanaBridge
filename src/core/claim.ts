@@ -59,13 +59,21 @@ export async function prepareClaim(input: {
   const transfer = status.transfer;
   const messageData = hexToBytes(status.event.data);
 
+  // ---- Everything needed from Solana, in one request (the payer's balance comes from its account) --
+  const rootBlock = status.bridge.baseBlockNumber;
+  const outputRoot = await findOutputRootPda(program, rootBlock);
+  const [payerAccount, outputRootAccount, incomingAccount, destinationAccount, mintAccount = null] = await fetchAccounts(rpc, [
+    payer,
+    outputRoot,
+    status.incomingMessage,
+    transfer.to,
+    ...(transfer.kind === "sol" ? [] : [transfer.mint])
+  ]);
+
   // ---- Proof against the latest output root, checked locally before anything is signed --------
   let proofState: ProofState = { kind: "proven" };
   let incomingLamports = 0n;
   if (status.state === "ready") {
-    const rootBlock = status.bridge.baseBlockNumber;
-    const outputRoot = await findOutputRootPda(program, rootBlock);
-    const [outputRootAccount, incomingAccount] = await fetchAccounts(rpc, [outputRoot, status.incomingMessage]);
     if (!outputRootAccount || outputRootAccount.owner !== program) throw new UserFacingError("The Solana output root for this claim was not found. Click Track to refresh the status, then try again.");
     const root = decodeOutputRoot(outputRootAccount.data);
     if (incomingAccount?.owner === SYSTEM_PROGRAM) incomingLamports = incomingAccount.lamports;
@@ -88,13 +96,11 @@ export async function prepareClaim(input: {
   let tokenProgram: Address | null = null;
 
   if (transfer.kind === "sol") {
-    const [recipient] = await fetchAccounts(rpc, [transfer.to]);
     const rentFloor = await fetchMinimumRent(rpc, 0);
-    if (!recipient && transfer.amount < rentFloor) {
+    if (!destinationAccount && transfer.amount < rentFloor) {
       throw new UserFacingError("The recipient wallet is empty and this amount is below Solana's minimum account balance, so the claim cannot succeed until the recipient wallet holds some SOL.");
     }
   } else {
-    const [mintAccount, destinationAccount] = await fetchAccounts(rpc, [transfer.mint, transfer.to]);
     if (!mintAccount) throw new UserFacingError("The Solana mint no longer exists.");
     tokenProgram = mintAccount.owner;
     if (tokenProgram !== TOKEN_PROGRAM && tokenProgram !== TOKEN_2022_PROGRAM) throw new UserFacingError("The Solana mint uses an unsupported token program.");
@@ -161,14 +167,13 @@ export async function prepareClaim(input: {
     const proofRent = await fetchMinimumRent(rpc, incomingMessageSpace(messageData.length));
     newAccountRent += proofRent > incomingLamports ? proofRent - incomingLamports : 0n;
   }
-  const { value: balance } = await rpc.getBalance(payer, { commitment: "confirmed" }).send();
 
   return {
     status,
     payer,
     plan,
     priorityFee,
-    cost: { networkFees, newAccountRent, required: networkFees + newAccountRent, balance: BigInt(balance) }
+    cost: { networkFees, newAccountRent, required: networkFees + newAccountRent, balance: payerAccount?.lamports ?? 0n }
   };
 }
 

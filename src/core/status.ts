@@ -3,7 +3,7 @@ import { hexToBytes, isHash, type Hex, type PublicClient } from "viem";
 
 import { NETWORK } from "../config";
 import { ERC20_WRAPPER_ABI, lookupBridgeTransaction, type BridgeEvent } from "../chain/base";
-import { fetchAccounts, type SolanaRpc } from "../chain/solana";
+import { fetchAccounts, type RawAccount, type SolanaRpc } from "../chain/solana";
 import { decodeBridgeAccount, decodeIncomingMessage, decodeMint, decodeTokenAccount, type BridgeAccount } from "../protocol/accounts";
 import { SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
 import { findBridgePda, findIncomingMessagePda } from "../protocol/instructions";
@@ -71,9 +71,13 @@ export function estimateRootEta(baseBlock: bigint, finalizedBlock: bigint, inter
 export async function loadBridgeState(rpc: SolanaRpc): Promise<{ pda: Address; account: BridgeAccount }> {
   const pda = await findBridgePda(NETWORK.solana.bridgeProgram);
   const [raw] = await fetchAccounts(rpc, [pda]);
+  return { pda, account: readBridgeAccount(raw) };
+}
+
+function readBridgeAccount(raw: RawAccount | null): BridgeAccount {
   if (!raw) throw new Error("The Solana bridge account was not found.");
   if (raw.owner !== NETWORK.solana.bridgeProgram) throw new Error("The Solana bridge account has an unexpected owner.");
-  return { pda, account: decodeBridgeAccount(raw.data) };
+  return decodeBridgeAccount(raw.data);
 }
 
 export async function trackTransaction(input: { txHash: Hex; base: PublicClient; rpc: SolanaRpc }): Promise<TrackStatus> {
@@ -88,23 +92,19 @@ export async function trackTransaction(input: { txHash: Hex; base: PublicClient;
   const { event, blockNumber } = lookup;
   const data = hexToBytes(event.data);
   const message = decodeBridgeMessage(data);
-  const [bridgeState, incomingMessage] = await Promise.all([loadBridgeState(rpc), findIncomingMessagePda(NETWORK.solana.bridgeProgram, event.messageHash)]);
+  const program = NETWORK.solana.bridgeProgram;
+  const [bridgePda, incomingMessage] = await Promise.all([findBridgePda(program), findIncomingMessagePda(program, event.messageHash)]);
 
-  const common: TrackedCommon = {
-    txHash,
-    baseBlock: blockNumber,
-    baseSender: lookup.from,
-    event,
-    message,
-    incomingMessage,
-    bridge: bridgeState.account,
-    bridgePda: bridgeState.pda
-  };
+  // Everything needed from Solana, in one request.
+  const transfer = message.type === "transfer" && message.instructionCount === 0 ? message.transfer : null;
+  const tokenAccounts = transfer && transfer.kind !== "sol" ? [transfer.mint, transfer.to] : [];
+  const [bridgeRaw, incoming, mintAccount = null, destination = null] = await fetchAccounts(rpc, [bridgePda, incomingMessage, ...tokenAccounts]);
+  const bridge = readBridgeAccount(bridgeRaw);
 
-  const [incoming] = await fetchAccounts(rpc, [incomingMessage]);
+  const common: TrackedCommon = { txHash, baseBlock: blockNumber, baseSender: lookup.from, event, message, incomingMessage, bridge, bridgePda };
   const executed = readExecuted(incoming, data.length);
 
-  if (message.type === "call" || message.instructionCount > 0) {
+  if (!transfer) {
     return {
       state: "unsupported",
       reason: message.type === "call"
@@ -115,16 +115,16 @@ export async function trackTransaction(input: { txHash: Hex; base: PublicClient;
     };
   }
 
-  const { asset, recipientWallet } = await describeTransfer(message.transfer, base, rpc);
-  const tracked: TrackedTransfer = { ...common, transfer: message.transfer, asset, recipientWallet };
+  const { asset, recipientWallet } = await describeTransfer(transfer, base, mintAccount, destination);
+  const tracked: TrackedTransfer = { ...common, transfer, asset, recipientWallet };
   if (executed === "executed") return { state: "claimed", ...tracked };
   if (executed === "proven") return { state: "proven", ...tracked };
-  if (bridgeState.account.baseBlockNumber >= blockNumber) return { state: "ready", ...tracked };
+  if (bridge.baseBlockNumber >= blockNumber) return { state: "ready", ...tracked };
 
   const finalized = await base.getBlock({ blockTag: "finalized" }).then((block) => block.number);
   return {
     state: "waiting-for-root",
-    eta: estimateRootEta(blockNumber, finalized, bridgeState.account.blockIntervalRequirement),
+    eta: estimateRootEta(blockNumber, finalized, bridge.blockIntervalRequirement),
     ...tracked
   };
 }
@@ -136,10 +136,14 @@ function readExecuted(account: { owner: Address; data: Uint8Array } | null, mess
   return decodeIncomingMessage(account.data, messageLength).executed ? "executed" : "proven";
 }
 
-async function describeTransfer(transfer: BridgeTransfer, base: PublicClient, rpc: SolanaRpc): Promise<{ asset: TrackedAsset; recipientWallet: Address | null }> {
+async function describeTransfer(
+  transfer: BridgeTransfer,
+  base: PublicClient,
+  mintAccount: RawAccount | null,
+  destination: RawAccount | null
+): Promise<{ asset: TrackedAsset; recipientWallet: Address | null }> {
   if (transfer.kind === "sol") return { asset: { symbol: "SOL", decimals: 9 }, recipientWallet: transfer.to };
 
-  const [mintAccount, destination] = await fetchAccounts(rpc, [transfer.mint, transfer.to]);
   if (!mintAccount) throw new Error(`The Solana mint ${transfer.mint} was not found.`);
   if (mintAccount.owner !== TOKEN_PROGRAM && mintAccount.owner !== TOKEN_2022_PROGRAM) {
     throw new Error("The Solana mint is owned by an unsupported token program.");

@@ -34,8 +34,18 @@ export async function fetchAccounts(rpc: SolanaRpc, addresses: Address[]): Promi
   return (value as readonly unknown[]).map((account, index) => toRawAccount(addresses[index], account as never));
 }
 
-export async function fetchMinimumRent(rpc: SolanaRpc, space: number): Promise<bigint> {
-  return BigInt(await rpc.getMinimumBalanceForRentExemption(BigInt(space), { commitment: "confirmed" }).send());
+// Rent for a given account size doesn't change during a visit, so each size is asked for once per RPC.
+const rentCache = new WeakMap<SolanaRpc, Map<number, Promise<bigint>>>();
+
+export function fetchMinimumRent(rpc: SolanaRpc, space: number): Promise<bigint> {
+  const sizes = rentCache.get(rpc) ?? new Map<number, Promise<bigint>>();
+  rentCache.set(rpc, sizes);
+  const cached = sizes.get(space);
+  if (cached) return cached;
+  const rent = rpc.getMinimumBalanceForRentExemption(BigInt(space), { commitment: "confirmed" }).send().then(BigInt);
+  rent.catch(() => sizes.delete(space)); // a failed lookup is retried next time
+  sizes.set(space, rent);
+  return rent;
 }
 
 export type SignatureOutcome = { status: "confirmed" } | { status: "failed"; error: unknown } | { status: "expired" };
@@ -57,15 +67,18 @@ export async function waitForSignature(
     if (status?.err) return { status: "failed", error: status.err };
     if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) return { status: "confirmed" };
 
-    const height = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
-    if (BigInt(height) > lastValidBlockHeight) {
-      // One last look in case it landed right at the boundary.
-      const { value: final } = await rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send();
-      if (final[0]?.err) return { status: "failed", error: final[0].err };
-      return final[0] ? { status: "confirmed" } : { status: "expired" };
+    // Expiry only matters after about a minute, so the block height is checked every 4th poll (~6 s).
+    if (attempt % 4 === 0) {
+      const height = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
+      if (BigInt(height) > lastValidBlockHeight) {
+        // One last look in case it landed right at the boundary.
+        const { value: final } = await rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send();
+        if (final[0]?.err) return { status: "failed", error: final[0].err };
+        return final[0] ? { status: "confirmed" } : { status: "expired" };
+      }
+      // Re-broadcasting the identical signed bytes is idempotent and helps under congestion.
+      if (options.resend && attempt > 0) await options.resend().catch(() => undefined);
     }
-    // Re-broadcasting the identical signed bytes is idempotent and helps under congestion.
-    if (options.resend && attempt > 0 && attempt % 4 === 0) await options.resend().catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, interval));
   }
 }
