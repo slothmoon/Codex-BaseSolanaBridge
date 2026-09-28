@@ -64,7 +64,7 @@ describe("release dry run", () => {
   it("simulates the vault's own transfer, paid by the bridge's SOL vault, creating the account only when needed", async () => {
     const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS });
     const { rpc, calls } = fakeRpc({ simulate: () => ({ err: null, post: tokenAccount(5n) }) });
-    const result = await rehearseRelease({ kind: "spl", rpc, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: ata, createForOwner: owner });
+    const result = await rehearseRelease({ kind: "spl", rpc, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: ata, createForOwner: owner, before: null });
     expect(result).toMatchObject({ ok: true, received: 5n });
 
     const message = messageOf(calls[0]);
@@ -75,21 +75,22 @@ describe("release dry run", () => {
     expect(transfer.data![0]).toBe(12); // TransferChecked
     expect(transfer.accounts!.map((meta) => meta.address)).toEqual([vault, mint, ata, vault]); // source, mint, destination, authority = vault PDA
 
-    const { rpc: rpc2, calls: calls2 } = fakeRpc({ existing: { [ata]: tokenAccount(100n) }, simulate: () => ({ err: null, post: tokenAccount(105n) }) });
-    const existing = await rehearseRelease({ kind: "spl", rpc: rpc2, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: ata, createForOwner: null });
+    const { rpc: rpc2, calls: calls2 } = fakeRpc({ simulate: () => ({ err: null, post: tokenAccount(105n) }) });
+    const before = { address: ata, owner: TOKEN_PROGRAM_ADDRESS, lamports: 2_039_280n, data: tokenAccount(100n) };
+    const existing = await rehearseRelease({ kind: "spl", rpc: rpc2, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: ata, createForOwner: null, before });
     expect(existing).toMatchObject({ ok: true, received: 5n }); // the delta, not the balance
     expect(messageOf(calls2[0]).instructions.some((ix) => ix.programAddress === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")).toBe(false);
   });
 
   it("reports the token program's own reason when the release would fail", async () => {
     const { rpc } = fakeRpc({ simulate: () => ({ err: { InstructionError: [2, { Custom: 17 }] }, logs: ["Program log: Instruction: TransferChecked", "Program log: Error: Account is frozen", "Program Tokenkeg consumed 1000 of 200000 compute units"] }) });
-    const result = await rehearseRelease({ kind: "spl", rpc, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: owner, createForOwner: null });
+    const result = await rehearseRelease({ kind: "spl", rpc, amount: 5n, mint, decimals: 9, tokenProgram: TOKEN_PROGRAM_ADDRESS, vault, destination: owner, createForOwner: null, before: null });
     expect(result).toMatchObject({ ok: false, reason: "Account is frozen" });
   });
 
   it("rehearses SOL as a system transfer out of the SOL vault", async () => {
     const { rpc, calls } = fakeRpc({ simulate: () => ({ err: null, post: new Uint8Array() }) });
-    await rehearseRelease({ kind: "sol", rpc, amount: 1_000_000_000n, recipient: owner });
+    await rehearseRelease({ kind: "sol", rpc, amount: 1_000_000_000n, recipient: owner, before: null });
     const ix = messageOf(calls[0]).instructions.at(-1)!;
     expect(ix.programAddress).toBe(SYSTEM_PROGRAM);
     expect(ix.accounts!.map((meta) => meta.address)).toEqual([await findSolVaultPda(program), owner]);

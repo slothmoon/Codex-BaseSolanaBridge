@@ -7,6 +7,9 @@ import {
   getSignatureFromTransaction,
   getTransactionDecoder,
   getTransactionEncoder,
+  isSolanaError,
+  SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE,
+  SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED,
   verifySignature,
   type Address,
   type Instruction,
@@ -127,6 +130,7 @@ export async function prepareClaim(input: {
         kind: "spl",
         rpc,
         amount: transfer.amount,
+        before: destinationAccount,
         mint: transfer.mint,
         decimals: decodeMint(mintAccount.data).decimals,
         tokenProgram,
@@ -242,11 +246,13 @@ export async function executeClaim(input: {
     try {
       await sendWireTransaction(rpc, wire, true);
     } catch (error) {
-      const text = String((error as Error)?.message ?? error);
-      if (!/already been processed|AlreadyProcessed/i.test(text)) {
-        // Kit puts preflight logs in `context.logs`; the transaction error itself is only on `cause`.
-        const logs = (error as { context?: { logs?: string[] } }).context?.logs ?? [];
-        throw new UserFacingError(`Solana rejected the transaction before it was sent, so no fee was charged: ${explainLogs(logs) ?? text}`, [text, ...logs].join("\n"));
+      // Only a preflight rejection means nothing was sent. Any other error (a timeout, a dropped connection)
+      // may still have reached the network, so the confirmation below decides, re-sending as it goes.
+      if (isSolanaError(error, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_SEND_TRANSACTION_PREFLIGHT_FAILURE) && !isSolanaError(error.cause, SOLANA_ERROR__TRANSACTION_ERROR__ALREADY_PROCESSED)) {
+        // Kit's message is just "Transaction simulation failed"; the reason is on `cause`, the logs on `context`.
+        const reason = (error.cause as Error | undefined)?.message ?? error.message;
+        const logs = error.context.logs ?? [];
+        throw new UserFacingError(`Solana rejected the transaction before it was sent, so no fee was charged: ${explainLogs(logs) ?? reason}`, [reason, ...logs].join("\n"));
       }
     }
 

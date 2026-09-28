@@ -92,12 +92,13 @@ describe("live mainnet", () => {
     const jito = await inspectToken({ token: "0x97bE14Dd8f994A5364573BC035D85309E7CB34de", holder: null, base, rpc });
     const owner = (await generateKeyPairSigner()).address; // brand-new wallet: its token account must be created
     const [ata] = await findAssociatedTokenPda({ owner, mint: jito.mint!.address, tokenProgram: jito.mint!.tokenProgram });
-    const spl = { kind: "spl" as const, rpc, mint: jito.mint!.address, decimals: jito.mint!.account.decimals, tokenProgram: jito.mint!.tokenProgram, vault: jito.vault.address, destination: ata, createForOwner: owner };
+    const spl = { kind: "spl" as const, rpc, mint: jito.mint!.address, decimals: jito.mint!.account.decimals, tokenProgram: jito.mint!.tokenProgram, vault: jito.vault.address, destination: ata, createForOwner: owner, before: null };
     expect(await rehearseRelease({ ...spl, amount: 1_234_567n })).toMatchObject({ ok: true, received: 1_234_567n });
     const tooMuch = await rehearseRelease({ ...spl, amount: jito.vault.balance + 1n });
     expect(tooMuch.ok).toBe(false);
     expect(!tooMuch.ok && tooMuch.reason).toMatch(/insufficient/i);
-    expect(await rehearseRelease({ kind: "sol", rpc, amount: 10_000_000n, recipient: FUNDED_FEE_PAYER })).toMatchObject({ ok: true, received: 10_000_000n });
+    const [payer] = await fetchAccounts(rpc, [FUNDED_FEE_PAYER]);
+    expect(await rehearseRelease({ kind: "sol", rpc, amount: 10_000_000n, recipient: FUNDED_FEE_PAYER, before: payer })).toMatchObject({ ok: true, received: 10_000_000n });
   });
 
 });

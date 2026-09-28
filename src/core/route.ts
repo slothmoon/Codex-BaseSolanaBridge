@@ -4,7 +4,7 @@ import { formatUnits, getAddress, parseUnits, type Address, type Hex, type Publi
 
 import { NETWORK } from "../config";
 import { BRIDGE_ABI, readWrapper, type WrapperInfo } from "../chain/base";
-import { fetchAccounts, fetchMinimumRent, type SolanaRpc } from "../chain/solana";
+import { fetchAccounts, fetchMinimumRent, type RawAccount, type SolanaRpc } from "../chain/solana";
 import { addressToBytes32Hex, bytes32HexToAddress } from "../protocol/bytes";
 import { decodeMint, decodeTokenAccount, incomingMessageSpace, type MintAccount } from "../protocol/accounts";
 import { NATIVE_SOL_REMOTE_TOKEN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
@@ -149,6 +149,7 @@ export async function buildRoute(input: {
   }
 
   let destination: SolanaAddress;
+  let destinationAccount: RawAccount | null;
   let destinationExists: boolean;
   let expectedReceived = amount;
   let destinationSpace = 0;
@@ -157,6 +158,7 @@ export async function buildRoute(input: {
   if (inspection.kind === "sol") {
     destination = input.recipientWallet;
     const [recipient] = await fetchAccounts(rpc, [destination]);
+    destinationAccount = recipient;
     destinationExists = Boolean(recipient);
     walletLamports = recipient?.lamports ?? 0n;
     const rentFloor = await fetchMinimumRent(rpc, 0);
@@ -177,6 +179,7 @@ export async function buildRoute(input: {
     const [ata] = await findAssociatedTokenPda({ owner: input.recipientWallet, mint: mint.address, tokenProgram: mint.tokenProgram });
     destination = ata;
     const [account, wallet] = await fetchAccounts(rpc, [ata, input.recipientWallet]);
+    destinationAccount = account;
     destinationExists = Boolean(account);
     walletLamports = wallet?.lamports ?? 0n;
     if (amount > inspection.vault.balance) {
@@ -188,11 +191,12 @@ export async function buildRoute(input: {
   if (!findings.some((finding) => finding.level === "block")) {
     const mint = inspection.mint; // null only for SOL
     const rehearsal = !mint
-      ? await rehearseRelease({ kind: "sol", rpc, amount, recipient: input.recipientWallet })
+      ? await rehearseRelease({ kind: "sol", rpc, amount, recipient: input.recipientWallet, before: destinationAccount })
       : await rehearseRelease({
           kind: "spl",
           rpc,
           amount,
+          before: destinationAccount,
           mint: mint.address,
           decimals: mint.account.decimals,
           tokenProgram: mint.tokenProgram,

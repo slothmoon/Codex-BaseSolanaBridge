@@ -2,7 +2,7 @@ import { AccountRole, createNoopSigner, getBase64EncodedWireTransaction, getBase
 import { getCreateAssociatedTokenIdempotentInstruction, getTransferCheckedInstruction } from "@solana-program/token";
 
 import { NETWORK } from "../config";
-import { fetchAccounts, type SolanaRpc } from "../chain/solana";
+import type { RawAccount, SolanaRpc } from "../chain/solana";
 import { concatBytes, u32le, u64le } from "../protocol/bytes";
 import { decodeTokenAccount } from "../protocol/accounts";
 import { SYSTEM_PROGRAM } from "../protocol/constants";
@@ -26,7 +26,7 @@ export type ReleaseRehearsal =
   | { ok: true; received: bigint; destinationSpace: number }
   | { ok: false; reason: string; logs: readonly string[] };
 
-export type RehearsalInput =
+export type RehearsalInput = (
   | { kind: "sol"; rpc: SolanaRpc; amount: bigint; recipient: Address }
   | {
       kind: "spl";
@@ -40,14 +40,18 @@ export type RehearsalInput =
       destination: Address;
       /** Set when `destination` does not exist yet and will be created as this wallet's associated token account. */
       createForOwner: Address | null;
-    };
+    }
+) & {
+  /** The destination account as the caller just fetched it (null if it doesn't exist), to measure what it receives. */
+  before: RawAccount | null;
+};
 
 const SIMULATION_COMPUTE_UNITS = 400_000;
 
 export async function rehearseRelease(input: RehearsalInput): Promise<ReleaseRehearsal> {
   const solVault = await findSolVaultPda(NETWORK.solana.bridgeProgram);
   const destination = input.kind === "sol" ? input.recipient : input.destination;
-  const [before] = await fetchAccounts(input.rpc, [destination]);
+  const { before } = input;
 
   const instructions: Instruction[] =
     input.kind === "sol"

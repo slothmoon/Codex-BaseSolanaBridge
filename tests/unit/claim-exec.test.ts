@@ -5,6 +5,7 @@ import {
   decompileTransactionMessage,
   generateKeyPairSigner,
   getCompiledTransactionMessageDecoder,
+  getSolanaErrorFromJsonRpcError,
   getTransactionDecoder,
   getTransactionEncoder,
   partiallySignTransaction,
@@ -42,13 +43,19 @@ function walletFor(keys: KeyPairSigner, edit?: (tx: Transaction) => Transaction)
   };
 }
 
-function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; landsOnPoll?: number; blockHeight?: bigint } = {}) {
+function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; landsOnPoll?: number; blockHeight?: bigint; sendError?: unknown } = {}) {
   const sent: string[] = [];
   let polls = 0;
   const rpc = {
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 100n } }) }),
     simulateTransaction: () => ({ send: async () => ({ value: options.simulate?.() ?? { err: null, logs: [], unitsConsumed: 50_000n, loadedAccountsDataSize: 900_000 } }) }),
-    sendTransaction: (wire: string) => ({ send: async () => { sent.push(wire); return "sig"; } }),
+    sendTransaction: (wire: string) => ({
+      send: async () => {
+        sent.push(wire);
+        if (options.sendError && sent.length === 1) throw options.sendError; // only the first broadcast
+        return "sig";
+      }
+    }),
     getSignatureStatuses: () => ({
       send: async () => ({ value: [options.landed === false || ++polls < (options.landsOnPoll ?? 1) ? null : { err: null, confirmationStatus: "confirmed" }] })
     }),
@@ -126,6 +133,25 @@ describe("claim execution", () => {
     });
     await expect(run(await planFor(keys.address, 4), addsFee, keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
     expect(sent).toHaveLength(1);
+  });
+
+  // What kit throws for a preflight rejection: a generic message, the reason on `cause`, the logs on `context`.
+  const preflightRejection = (err: string, message: string, logs: string[] = []) =>
+    getSolanaErrorFromJsonRpcError({ code: -32002, message: `Transaction simulation failed: ${message}`, data: { err, logs, accounts: null, unitsConsumed: 0 } });
+
+  it("stops on a real preflight rejection and names the bridge error", async () => {
+    const keys = await generateKeyPairSigner();
+    const logs = ["Program log: AnchorError occurred. Error Code: AlreadyExecuted. Error Number: 12501. Error Message: Message already executed."];
+    const { rpc } = fakeRpc({ sendError: preflightRejection("AccountInUse", "Error processing Instruction 2", logs) });
+    await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).rejects.toThrow(/before it was sent, so no fee was charged: This message has already been claimed/);
+  });
+
+  it("keeps confirming when the send reply is unclear or says the transaction was already processed", async () => {
+    const keys = await generateKeyPairSigner();
+    for (const sendError of [new TypeError("Failed to fetch"), preflightRejection("AlreadyProcessed", "This transaction has already been processed")]) {
+      const { rpc } = fakeRpc({ sendError });
+      await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
+    }
   });
 
   it("waits for a transaction that lands a few polls after sending instead of calling it expired", async () => {
