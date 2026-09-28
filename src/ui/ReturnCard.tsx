@@ -113,7 +113,7 @@ export function ReturnCard() {
             <Row label="Recipient wallet"><Mono value={reviewed.recipientWallet} href={solanaExplorerAccount(reviewed.recipientWallet)} /></Row>
             {reviewed.inspection.kind === "spl" && (
               <Row label="Token account">
-                <Mono value={reviewed.destination} />
+                <Mono value={reviewed.destination} href={reviewed.destinationExists ? solanaExplorerAccount(reviewed.destination) : undefined} />
                 {!reviewed.destinationExists && <span class="muted"> (created when you claim)</span>}
               </Row>
             )}
