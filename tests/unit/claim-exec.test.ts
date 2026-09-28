@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import { checkWalletSignature, executeClaim, type PreparedClaim, type SolanaSigner } from "../../src/core/claim";
 import { planClaim, type ClaimPlan } from "../../src/core/claim-plan";
-import type { SolanaRpc } from "../../src/chain/solana";
+import { waitForSignature, type SolanaRpc } from "../../src/chain/solana";
 import { buildTransaction } from "../../src/core/tx";
 import { findBridgePda, findOutputRootPda, relayRemainingAccounts } from "../../src/protocol/instructions";
 import { decodeBridgeMessage } from "../../src/protocol/message";
@@ -42,8 +42,9 @@ function walletFor(keys: KeyPairSigner, edit?: (tx: Transaction) => Transaction)
   };
 }
 
-function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; blockHeight?: bigint; sendFails?: boolean } = {}) {
+function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; landsOnPoll?: number; blockHeight?: bigint; sendFails?: boolean } = {}) {
   const sent: string[] = [];
+  let polls = 0;
   const rpc = {
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 100n } }) }),
     simulateTransaction: () => ({ send: async () => ({ value: options.simulate?.() ?? { err: null, logs: [], unitsConsumed: 50_000n, loadedAccountsDataSize: 900_000 } }) }),
@@ -54,8 +55,12 @@ function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; 
         return "sig";
       }
     }),
-    getSignatureStatuses: () => ({ send: async () => ({ value: [options.landed === false ? null : { err: null, confirmationStatus: "confirmed" }] }) }),
-    getBlockHeight: () => ({ send: async () => options.blockHeight ?? 10n })
+    getSignatureStatuses: () => ({
+      send: async () => ({ value: [options.landed === false || ++polls < (options.landsOnPoll ?? 1) ? null : { err: null, confirmationStatus: "confirmed" }] })
+    }),
+    getEpochInfo: () => ({ send: async () => ({ blockHeight: options.blockHeight ?? 10n }) }),
+    // publicnode answers getBlockHeight with the slot number, far above any real block height.
+    getBlockHeight: () => ({ send: async () => 451_347_781n })
   };
   return { rpc: rpc as unknown as SolanaRpc, sent };
 }
@@ -134,6 +139,11 @@ describe("claim execution", () => {
     const { rpc, sent } = fakeRpc({ sendFails: true });
     await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
     expect(sent).toHaveLength(1);
+  });
+
+  it("waits for a transaction that lands a few polls after sending instead of calling it expired", async () => {
+    const { rpc } = fakeRpc({ landsOnPoll: 3 });
+    await expect(waitForSignature(rpc, "sig" as never, 100n, { intervalMs: 1 })).resolves.toEqual({ status: "confirmed" });
   });
 
   it("reports an expired transaction without claiming success", async () => {

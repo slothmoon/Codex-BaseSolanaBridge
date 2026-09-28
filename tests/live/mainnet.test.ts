@@ -40,6 +40,13 @@ describe("live mainnet", () => {
     }
   });
 
+  it("reads a block height that matches the RPC's blockhash lifetimes (claims use it to detect expiry)", async () => {
+    const { value: latest } = await rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
+    const { blockHeight } = await rpc.getEpochInfo({ commitment: "confirmed" }).send();
+    const remaining = BigInt(latest.lastValidBlockHeight) - BigInt(blockHeight);
+    expect(remaining > 100n && remaining <= 160n, `lastValid ${latest.lastValidBlockHeight}, height ${blockHeight}`).toBe(true);
+  });
+
   it("refuses a non-bridge ERC-20 (USDC)", async () => {
     await expect(inspectToken({ token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", holder: null, base, rpc })).rejects.toThrow(/official Base bridge factory/);
   });

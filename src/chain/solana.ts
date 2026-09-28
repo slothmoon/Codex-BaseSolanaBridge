@@ -73,8 +73,9 @@ export async function waitForSignature(
 
     // Expiry only matters after about a minute, so the block height is checked every 4th poll (~6 s).
     if (attempt % 4 === 0) {
-      const height = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
-      if (BigInt(height) > lastValidBlockHeight) {
+      // Not getBlockHeight: publicnode answers it with the slot number, which is far higher and would expire every claim at once.
+      const { blockHeight } = await rpc.getEpochInfo({ commitment: "confirmed" }).send();
+      if (BigInt(blockHeight) > lastValidBlockHeight) {
         // One last look in case it landed right at the boundary.
         const { value: final } = await rpc.getSignatureStatuses([signature], { searchTransactionHistory: true }).send();
         if (final[0]?.err) return { status: "failed", error: final[0].err };
