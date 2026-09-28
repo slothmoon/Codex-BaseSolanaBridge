@@ -325,10 +325,12 @@ export async function runClaim(): Promise<void> {
   const account = solanaAccount.value;
   const wallet = solanaWallet.value;
   if (!prep || !account || !wallet) return;
+  const hash = prep.status.txHash;
   claimRun.value = loading;
   claimProgress.value = [];
+  let result: Async<{ signatures: string[] }>;
   try {
-    const result = await executeClaim({
+    const value = await executeClaim({
       prepared: prep,
       signer: toSolanaSigner(wallet.wallet, account),
       rpc: getSolanaRpc(),
@@ -337,17 +339,20 @@ export async function runClaim(): Promise<void> {
         claimProgress.value = [...list, progress].sort((a, b) => a.index - b.index);
       }
     });
-    if (isShown(prep.status.txHash)) claimRun.value = { status: "ready", value: result };
+    result = { status: "ready", value };
   } catch (error) {
-    if (isShown(prep.status.txHash)) claimRun.value = failed(error);
-  } finally {
-    // Track is disabled during a claim, but a burn still moves the card to its own transaction. If that
-    // happened, the claim finishes quietly; tracking this one again shows it.
-    if (isShown(prep.status.txHash)) {
-      claimPrep.value = idle;
-      await track(prep.status.txHash, true);
-    }
+    result = failed(error);
   }
+  // Track is disabled during a claim, but a burn still moves the card to its own transaction. If that
+  // happened, the claim finishes quietly; tracking this one again shows it.
+  if (!isShown(hash)) return;
+  claimPrep.value = idle;
+  await track(hash, true);
+  if (!isShown(hash)) return;
+  // The RPC can report a failed send for a claim that still landed (seen on mainnet); the chain decides.
+  const claimed = tracked.value.status === "ready" && tracked.value.value.state === "claimed";
+  const sent = claimProgress.value.flatMap((step) => (step.signature ? [step.signature] : []));
+  claimRun.value = result.status === "error" && claimed ? { status: "ready", value: { signatures: sent } } : result;
 }
 
 // ---------------------------------------------------------------------------------------------

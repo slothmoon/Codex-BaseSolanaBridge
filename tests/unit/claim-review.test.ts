@@ -3,19 +3,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Status lookups, claim preparation and claim execution are faked so their timing can be controlled.
 let holdLookup: Promise<void> | null = null; // when set, status lookups wait for it
+let lookupState = "ready";
 vi.mock("../../src/core/status", async (original) => ({
   ...(await original<typeof import("../../src/core/status")>()),
   trackTransaction: vi.fn(async ({ txHash }: { txHash: string }) => {
     if (holdLookup) await holdLookup;
-    return { state: "ready", txHash };
+    return { state: lookupState, txHash };
   })
 }));
 let finishPrepare: (value: unknown) => void = () => undefined;
 let finishClaim: (value: unknown) => void = () => undefined;
+let failClaim: (signature: string, error: Error) => void = () => undefined; // sends one transaction, then errors
 vi.mock("../../src/core/claim", async (original) => ({
   ...(await original<typeof import("../../src/core/claim")>()),
   prepareClaim: vi.fn(({ status }: { status: unknown }) => new Promise((resolve) => (finishPrepare = () => resolve({ status, plan: { txs: [] } })))),
-  executeClaim: vi.fn(() => new Promise((resolve) => (finishClaim = resolve)))
+  executeClaim: vi.fn(
+    ({ onProgress }: { onProgress: (progress: unknown) => void }) =>
+      new Promise((resolve, reject) => {
+        finishClaim = resolve;
+        failClaim = (signature, error) => {
+          onProgress({ index: 0, total: 1, label: "Prove and release", phase: "sending", signature });
+          reject(error);
+        };
+      })
+  )
 }));
 vi.mock("../../src/wallets/solana", async (original) => ({
   ...(await original<typeof import("../../src/wallets/solana")>()),
@@ -98,5 +109,29 @@ describe("claim review and claim while the user moves around", () => {
     await claim;
     expect(shown()).toBe(A);
     expect(state.claimRun.value).toEqual({ status: "ready", value: { signatures: ["sigA"] } });
+  });
+
+  it("shows the claim as complete when sending reported an error but the claim landed", async () => {
+    await state.track(A);
+    const review = state.reviewClaim();
+    finishPrepare(undefined);
+    await review;
+    const claim = state.runClaim();
+    lookupState = "claimed"; // the chain says it landed
+    failClaim("sigA", new Error("Transaction simulation failed: Blockhash not found"));
+    await claim;
+    lookupState = "ready";
+    expect(state.claimRun.value).toEqual({ status: "ready", value: { signatures: ["sigA"] } });
+  });
+
+  it("still shows the error when the claim did not land", async () => {
+    await state.track(A);
+    const review = state.reviewClaim();
+    finishPrepare(undefined);
+    await review;
+    const claim = state.runClaim();
+    failClaim("sigA", new Error("Transaction simulation failed: Blockhash not found"));
+    await claim;
+    expect(state.claimRun.value).toMatchObject({ status: "error", message: "Transaction simulation failed: Blockhash not found" });
   });
 });
