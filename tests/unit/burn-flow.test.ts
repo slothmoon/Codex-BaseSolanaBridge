@@ -24,6 +24,17 @@ vi.mock("../../src/core/route", async (original) => {
     }))
   };
 });
+const baseCalls: string[] = [];
+vi.mock("../../src/chain/base", async (original) => ({
+  ...(await original<typeof import("../../src/chain/base")>()),
+  getBaseClient: () => ({
+    waitForTransactionReceipt: async ({ hash }: { hash: string }) => void baseCalls.push(`wait ${hash}`),
+    getTransactionReceipt: async () => {
+      baseCalls.push("lookup");
+      throw Object.assign(new Error("not found"), { name: "TransactionReceiptNotFoundError" });
+    }
+  })
+}));
 vi.mock("../../src/chain/solana", async (original) => ({
   ...(await original<typeof import("../../src/chain/solana")>()),
   getSolanaRpc: () => ({})
@@ -76,6 +87,16 @@ describe("burn safety", () => {
     expect(sendBurn).not.toHaveBeenCalled();
     expect(state.burnState.value).toMatchObject({ status: "error", message: expect.stringMatching(/Nothing was sent/) });
     expect(state.activeRoute.value).not.toBeNull();
+  });
+
+  it("waits for Base to include the burn before looking it up", async () => {
+    await reviewed();
+    const hash = `0x${"c".repeat(64)}`;
+    sendBurn.mockResolvedValue(hash);
+    baseCalls.length = 0;
+    await state.burn();
+    expect(state.burnState.value).toEqual({ status: "ready", value: hash });
+    expect(baseCalls[0]).toBe(`wait ${hash}`); // otherwise the first lookup usually finds nothing yet
   });
 
   it("refuses to burn when a warning appears that the user never saw", async () => {

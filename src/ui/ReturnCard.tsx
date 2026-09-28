@@ -156,7 +156,7 @@ export function ReturnCard() {
       {burnState.value.status === "error" && <ErrorNotice message={burnState.value.message} detail={burnState.value.detail} />}
       {burnState.value.status === "ready" && (
         <Notice tone="success" title="Burn submitted">
-          <Mono value={burnState.value.value} href={baseExplorerTx(burnState.value.value)} /> Tracking it on the right.
+          <Mono value={burnState.value.value} href={baseExplorerTx(burnState.value.value)} /> Tracking it under Track &amp; claim.
         </Notice>
       )}
     </section>

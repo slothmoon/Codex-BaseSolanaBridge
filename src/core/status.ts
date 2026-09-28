@@ -14,7 +14,6 @@ export type TrackedAsset = { symbol: string; decimals: number };
 export type TrackedCommon = {
   txHash: Hex;
   baseBlock: bigint;
-  baseSender: Hex;
   event: BridgeEvent;
   message: BridgeMessage;
   incomingMessage: Address;
@@ -74,7 +73,7 @@ export async function loadBridgeState(rpc: SolanaRpc): Promise<{ pda: Address; a
   return { pda, account: readBridgeAccount(raw) };
 }
 
-function readBridgeAccount(raw: RawAccount | null): BridgeAccount {
+export function readBridgeAccount(raw: RawAccount | null): BridgeAccount {
   if (!raw) throw new Error("The Solana bridge account was not found.");
   if (raw.owner !== NETWORK.solana.bridgeProgram) throw new Error("The Solana bridge account has an unexpected owner.");
   return decodeBridgeAccount(raw.data);
@@ -101,7 +100,7 @@ export async function trackTransaction(input: { txHash: Hex; base: PublicClient;
   const [bridgeRaw, incoming, mintAccount = null, destination = null] = await fetchAccounts(rpc, [bridgePda, incomingMessage, ...tokenAccounts]);
   const bridge = readBridgeAccount(bridgeRaw);
 
-  const common: TrackedCommon = { txHash, baseBlock: blockNumber, baseSender: lookup.from, event, message, incomingMessage, bridge, bridgePda };
+  const common: TrackedCommon = { txHash, baseBlock: blockNumber, event, message, incomingMessage, bridge, bridgePda };
   const executed = readExecuted(incoming, data.length);
 
   if (!transfer) {

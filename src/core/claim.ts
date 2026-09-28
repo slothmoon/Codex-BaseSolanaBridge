@@ -41,7 +41,6 @@ export type PreparedClaim = {
   status: TrackedTransfer;
   payer: Address;
   plan: ClaimPlan;
-  priorityFee: bigint;
   cost: { networkFees: bigint; newAccountRent: bigint; required: bigint; balance: bigint };
 };
 
@@ -160,8 +159,7 @@ export async function prepareClaim(input: {
   );
 
   // ---- Cost ----------------------------------------------------------------------------------
-  const priorityFee = PRIORITY_FEE_MICROLAMPORTS;
-  const networkFees = BigInt(plan.txs.length) * (LAMPORTS_PER_SIGNATURE + priorityFeeLamports(ROUGH_UNITS_PER_TX, priorityFee));
+  const networkFees = BigInt(plan.txs.length) * (LAMPORTS_PER_SIGNATURE + priorityFeeLamports(ROUGH_UNITS_PER_TX, PRIORITY_FEE_MICROLAMPORTS));
   let newAccountRent = destinationRent;
   if (proofState.kind === "unproven") {
     const proofRent = await fetchMinimumRent(rpc, incomingMessageSpace(messageData.length));
@@ -172,7 +170,6 @@ export async function prepareClaim(input: {
     status,
     payer,
     plan,
-    priorityFee,
     cost: { networkFees, newAccountRent, required: networkFees + newAccountRent, balance: payerAccount?.lamports ?? 0n }
   };
 }
@@ -216,7 +213,7 @@ export async function executeClaim(input: {
       instructions: tx.instructions,
       blockhash: latest.blockhash,
       lastValidBlockHeight: BigInt(latest.lastValidBlockHeight),
-      microLamportsPerComputeUnit: prepared.priorityFee
+      microLamportsPerComputeUnit: PRIORITY_FEE_MICROLAMPORTS
     };
     const probe = buildTransaction({ ...base, computeUnitLimit: MAX_COMPUTE_UNITS, loadedAccountsDataSizeLimit: MAX_LOADED_ACCOUNTS_DATA });
     const simulation = await rpc

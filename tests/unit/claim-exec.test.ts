@@ -81,7 +81,6 @@ const prepared = (payer: Address, plan: ClaimPlan): PreparedClaim => ({
   status: {} as never,
   payer,
   plan,
-  priorityFee: 20_000n,
   cost: { networkFees: 0n, newAccountRent: 0n, required: 0n, balance: 10n ** 9n }
 });
 

@@ -8,8 +8,8 @@ import { fetchAccounts, fetchMinimumRent, type SolanaRpc } from "../chain/solana
 import { addressToBytes32Hex, bytes32HexToAddress } from "../protocol/bytes";
 import { decodeMint, decodeTokenAccount, incomingMessageSpace, type MintAccount } from "../protocol/accounts";
 import { NATIVE_SOL_REMOTE_TOKEN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/constants";
-import { findSolVaultPda, findTokenVaultPda } from "../protocol/instructions";
-import { loadBridgeState } from "./status";
+import { findBridgePda, findSolVaultPda, findTokenVaultPda } from "../protocol/instructions";
+import { readBridgeAccount } from "./status";
 import { UserFacingError } from "./errors";
 import { rehearseRelease } from "./rehearsal";
 
@@ -51,27 +51,27 @@ export async function inspectToken(input: { token: string; holder: Address | nul
     throw new UserFacingError("That is not a valid Base token address.");
   }
 
-  const [wrapper, bridgeState] = await Promise.all([readWrapper(input.base, token, input.holder), loadBridgeState(input.rpc)]);
+  const wrapper = await readWrapper(input.base, token, input.holder);
   if (!wrapper.official) {
     throw new UserFacingError(
       "This token was not created by the official Base bridge factory, so it cannot be returned to Solana here. Only Base-wrapped Solana assets (SPL tokens and SOL) can be returned."
     );
   }
 
+  // Everything needed from Solana, in one request: the bridge (for its pause flag), the vault and the mint.
+  const program = NETWORK.solana.bridgeProgram;
+  const mintAddress = wrapper.remoteToken.toLowerCase() === NATIVE_SOL_REMOTE_TOKEN ? null : bytes32HexToAddress(wrapper.remoteToken);
+  const vaultAddress = mintAddress ? await findTokenVaultPda(program, mintAddress, token) : await findSolVaultPda(program);
+  const [bridgeAccount, vaultAccount, mintAccount = null] = await fetchAccounts(input.rpc, [await findBridgePda(program), vaultAddress, ...(mintAddress ? [mintAddress] : [])]);
+
   const findings: Finding[] = [];
   if (wrapper.bridgePaused) findings.push({ level: "block", code: "base-paused", message: "The Base side of the bridge is paused. Burns are disabled until it is unpaused." });
-  if (bridgeState.account.paused) findings.push({ level: "block", code: "solana-paused", message: "The Solana side of the bridge is paused. Burning now would leave your funds waiting until it is unpaused." });
+  if (readBridgeAccount(bridgeAccount).paused) findings.push({ level: "block", code: "solana-paused", message: "The Solana side of the bridge is paused. Burning now would leave your funds waiting until it is unpaused." });
 
-  const program = NETWORK.solana.bridgeProgram;
-  if (wrapper.remoteToken.toLowerCase() === NATIVE_SOL_REMOTE_TOKEN) {
-    const vaultAddress = await findSolVaultPda(program);
-    const [vault] = await fetchAccounts(input.rpc, [vaultAddress]);
-    return { wrapper, kind: "sol", mint: null, vault: { address: vaultAddress, balance: vault?.lamports ?? 0n }, findings };
+  if (!mintAddress) {
+    return { wrapper, kind: "sol", mint: null, vault: { address: vaultAddress, balance: vaultAccount?.lamports ?? 0n }, findings };
   }
 
-  const mintAddress = bytes32HexToAddress(wrapper.remoteToken);
-  const vaultAddress = await findTokenVaultPda(program, mintAddress, token);
-  const [mintAccount, vaultAccount] = await fetchAccounts(input.rpc, [mintAddress, vaultAddress]);
   if (!mintAccount) throw new UserFacingError(`The Solana mint ${mintAddress} behind this wrapper does not exist.`);
   if (mintAccount.owner !== TOKEN_PROGRAM && mintAccount.owner !== TOKEN_2022_PROGRAM) {
     throw new UserFacingError("The Solana mint behind this wrapper uses an unsupported token program.");

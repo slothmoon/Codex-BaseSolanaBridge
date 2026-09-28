@@ -238,6 +238,8 @@ export async function burn(): Promise<void> {
     });
     route.value = idle;
     amountInput.value = "";
+    // The wallet returns as soon as the burn is broadcast; wait for Base to include it so the lookup finds it.
+    await getBaseClient().waitForTransactionReceipt({ hash, timeout: 60_000 }).catch(() => undefined);
     await track(hash);
   } catch (error) {
     burnState.value = failed(error);
