@@ -34,11 +34,11 @@ export const NETWORK = {
 } as const;
 
 export function solanaExplorerTx(signature: string): string {
-  return `https://explorer.solana.com/tx/${signature}`;
+  return `https://solscan.io/tx/${signature}`;
 }
 
 export function solanaExplorerAccount(account: string): string {
-  return `https://explorer.solana.com/address/${account}`;
+  return `https://solscan.io/account/${account}`;
 }
 
 export function baseExplorerTx(hash: string): string {

@@ -211,7 +211,7 @@ function ClaimPanel({ recipientKnown }: { recipientKnown: boolean }) {
             <li key={step.index} class={step.phase === "confirmed" ? "is-done" : ""}>
               <span>{step.index + 1}/{step.total} · {step.label}</span>
               <span class="muted">{phaseLabel(step.phase)}</span>
-              {step.signature && <a href={solanaExplorerTx(step.signature)} target="_blank" rel="noreferrer noopener" class="icon-button" aria-label="View on Solana Explorer"><Icon name="external" /></a>}
+              {step.signature && <a href={solanaExplorerTx(step.signature)} target="_blank" rel="noreferrer noopener" class="icon-button" aria-label="View on Solscan"><Icon name="external" /></a>}
             </li>
           ))}
         </ol>
