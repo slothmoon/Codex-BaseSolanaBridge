@@ -23,7 +23,7 @@ import { SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from "../protocol/c
 import { findOutputRootPda, findTokenVaultPda, relayRemainingAccounts } from "../protocol/instructions";
 import { verifyMmrProof } from "../protocol/mmr";
 import { planClaim, type ClaimPlan, type ProofState } from "./claim-plan";
-import { explainTransactionError, UserFacingError } from "./errors";
+import { explainLogs, explainTransactionError, UserFacingError } from "./errors";
 import { LAMPORTS_PER_SIGNATURE, PRIORITY_FEE_MICROLAMPORTS, priorityFeeLamports } from "./fees";
 import { rehearseRelease } from "./rehearsal";
 import type { TrackedTransfer } from "./status";
@@ -239,11 +239,19 @@ export async function executeClaim(input: {
     const wire = getBase64EncodedWireTransaction(signed);
 
     report("sending", signature);
-    // Simulated just before signing, so no preflight; the confirmation below decides (and re-sends), even if this send errors.
-    await sendWireTransaction(rpc, wire).catch(() => undefined);
+    try {
+      await sendWireTransaction(rpc, wire, true);
+    } catch (error) {
+      const text = String((error as Error)?.message ?? error);
+      if (!/already been processed|AlreadyProcessed/i.test(text)) {
+        // Kit puts preflight logs in `context.logs`; the transaction error itself is only on `cause`.
+        const logs = (error as { context?: { logs?: string[] } }).context?.logs ?? [];
+        throw new UserFacingError(`Solana rejected the transaction before it was sent, so no fee was charged: ${explainLogs(logs) ?? text}`, [text, ...logs].join("\n"));
+      }
+    }
 
     report("confirming", signature);
-    const outcome = await waitForSignature(rpc, signature, BigInt(latest.lastValidBlockHeight), { resend: () => sendWireTransaction(rpc, wire) });
+    const outcome = await waitForSignature(rpc, signature, BigInt(latest.lastValidBlockHeight), { resend: () => sendWireTransaction(rpc, wire, false) });
     if (outcome.status === "expired") {
       throw new UserFacingError(`"${tx.label}" did not land before its blockhash expired. Nothing was lost — review the claim again to continue where it stopped.`);
     }

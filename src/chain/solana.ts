@@ -89,9 +89,12 @@ export async function waitForSignature(
 }
 
 /**
- * Broadcasts without RPC preflight: callers simulate right before signing, and a lagging RPC node can
- * reject a valid transaction in preflight while it still lands.
+ * The first broadcast runs RPC preflight so a transaction that would fail (for example because
+ * someone else claimed the message after our simulation) is rejected before it can cost a fee.
+ * Re-broadcasts of the same bytes skip preflight, since the original may already be in flight.
  */
-export async function sendWireTransaction(rpc: SolanaRpc, wire: Base64EncodedWireTransaction): Promise<void> {
-  await rpc.sendTransaction(wire, { encoding: "base64", skipPreflight: true, maxRetries: 0n }).send();
+export async function sendWireTransaction(rpc: SolanaRpc, wire: Base64EncodedWireTransaction, preflight: boolean): Promise<void> {
+  await rpc
+    .sendTransaction(wire, { encoding: "base64", skipPreflight: !preflight, preflightCommitment: "confirmed", maxRetries: 0n })
+    .send();
 }

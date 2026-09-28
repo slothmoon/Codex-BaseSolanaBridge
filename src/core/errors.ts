@@ -96,8 +96,8 @@ function friendlyBridgeError(name: string): string | undefined {
 }
 
 /**
- * Anchor logs name the error (`Error Code: AlreadyExecuted. Error Number: 12501.`), even when the raw
- * error does not.
+ * Anchor logs name the error (`Error Code: AlreadyExecuted. Error Number: 12501.`), which works on
+ * every failure path, including RPC preflight rejections where the raw error is not returned.
  */
 export function explainLogs(logs?: readonly string[] | null): string | undefined {
   if (!logs) return undefined;

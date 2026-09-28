@@ -42,19 +42,13 @@ function walletFor(keys: KeyPairSigner, edit?: (tx: Transaction) => Transaction)
   };
 }
 
-function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; landsOnPoll?: number; blockHeight?: bigint; sendFails?: boolean } = {}) {
+function fakeRpc(options: { simulate?: () => { err: unknown; logs?: string[] }; landed?: boolean; landsOnPoll?: number; blockHeight?: bigint } = {}) {
   const sent: string[] = [];
   let polls = 0;
   const rpc = {
     getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: BLOCKHASH, lastValidBlockHeight: 100n } }) }),
     simulateTransaction: () => ({ send: async () => ({ value: options.simulate?.() ?? { err: null, logs: [], unitsConsumed: 50_000n, loadedAccountsDataSize: 900_000 } }) }),
-    sendTransaction: (wire: string) => ({
-      send: async () => {
-        sent.push(wire);
-        if (options.sendFails) throw new Error("Transaction simulation failed: Blockhash not found");
-        return "sig";
-      }
-    }),
+    sendTransaction: (wire: string) => ({ send: async () => { sent.push(wire); return "sig"; } }),
     getSignatureStatuses: () => ({
       send: async () => ({ value: [options.landed === false || ++polls < (options.landsOnPoll ?? 1) ? null : { err: null, confirmationStatus: "confirmed" }] })
     }),
@@ -131,13 +125,6 @@ describe("claim execution", () => {
       return compileTransaction(appendTransactionMessageInstruction(getSetComputeUnitPriceInstruction({ microLamports: 1n }), message as never) as never) as Transaction;
     });
     await expect(run(await planFor(keys.address, 4), addsFee, keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
-    expect(sent).toHaveLength(1);
-  });
-
-  it("lets the confirmation decide when the RPC errors on a send that still lands", async () => {
-    const keys = await generateKeyPairSigner();
-    const { rpc, sent } = fakeRpc({ sendFails: true });
-    await expect(run(await planFor(keys.address, 4), walletFor(keys), keys.address, rpc)).resolves.toMatchObject({ signatures: [expect.any(String)] });
     expect(sent).toHaveLength(1);
   });
 
