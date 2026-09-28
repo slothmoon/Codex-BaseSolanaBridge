@@ -168,6 +168,13 @@ describe("fees and errors", () => {
     expect(describeError(new HttpRequestError({ url: "https://mainnet.base.org", status: 429, details: "Too Many Requests" })).message).toMatch(/rate limiting/);
   });
 
+  it("describes an RPC that gives no usable answer plainly", () => {
+    // Exactly what kit and browsers throw: our 30 s limit, a server error, a dropped connection.
+    for (const error of [new DOMException("signal timed out", "TimeoutError"), new Error("HTTP error (503): SERVICE UNAVAILABLE"), new TypeError("Failed to fetch")]) {
+      expect(describeError(error).message).toBe("A public RPC endpoint did not answer. Try again in a moment.");
+    }
+  });
+
   it("names bridge errors only when the bridge program raised them", () => {
     const programs = ["ComputeBudget111111111111111111111111111111", NETWORK.solana.bridgeProgram];
     expect(explainTransactionError({ InstructionError: [1, { Custom: 12400 }] }, programs)).toMatch(/InvalidProof/);

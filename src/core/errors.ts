@@ -10,6 +10,8 @@ export class UserFacingError extends Error {
 }
 
 const RATE_LIMIT = /rate.?limit|too many requests|\b429\b|exceeded.*limit|capacity/i;
+// No usable answer: our 30 s limit ("signal timed out"), viem's timeout, a dropped connection or a server error.
+const UNAVAILABLE = /signal timed out|took too long to respond|failed to fetch|fetch failed|HTTP error \(5\d\d\)/i;
 // Only explicit user refusals. Generic "cancelled"/"denied" errors (timeouts, RPC failures) must not
 // count, because treating an ambiguous send failure as a rejection would allow a double burn.
 const REJECTED = /user rejected|user denied|rejected (the|this) request|user cancel+ed|request rejected by user/i;
@@ -27,6 +29,7 @@ export function describeError(error: unknown): { message: string; detail?: strin
   if (RATE_LIMIT.test(raw)) {
     return { message: "A public RPC endpoint is rate limiting requests. Wait a few seconds and try again.", detail: raw };
   }
+  if (UNAVAILABLE.test(raw)) return { message: "A public RPC endpoint did not answer. Try again in a moment.", detail: raw };
   return { message: firstLine(raw) || "Something went wrong.", detail: raw };
 }
 

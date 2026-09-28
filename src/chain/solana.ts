@@ -16,10 +16,25 @@ let rpcSingleton: SolanaRpc | null = null;
 export function getSolanaRpc(): SolanaRpc {
   if (!rpcSingleton) {
     const transport = createDefaultRpcTransport({ url: NETWORK.solana.rpcUrl });
-    // A request the RPC never answers fails after 30 s instead of leaving a step spinning forever.
-    rpcSingleton = createSolanaRpcFromTransport(((config) => transport({ ...config, signal: config.signal ?? AbortSignal.timeout(30_000) })) as typeof transport);
+    rpcSingleton = createSolanaRpcFromTransport((async (config) =>
+      // A request the RPC never answers fails after 30 s instead of leaving a step spinning forever.
+      withPreflightData(await transport({ ...config, signal: config.signal ?? AbortSignal.timeout(30_000) }))) as typeof transport);
   }
   return rpcSingleton;
+}
+
+/**
+ * publicnode leaves `data` out of preflight failures ("Transaction simulation failed: <reason>"), and kit
+ * needs it to report them: without it kit throws a TypeError instead. Rebuild it from the message.
+ */
+function withPreflightData<T>(response: T): T {
+  const error = (response as { error?: { code?: unknown; message?: string; data?: unknown } } | null)?.error;
+  // Kit parses every integer as a bigint, so the code arrives as -32002n.
+  if (error && Number(error.code) === -32002 && error.data === undefined) {
+    const reason = (error.message ?? "").replace(/^Transaction simulation failed:\s*/i, "");
+    error.data = { err: /already been processed/i.test(reason) ? "AlreadyProcessed" : reason, logs: [] };
+  }
+  return response;
 }
 
 export type RawAccount = { address: Address; owner: Address; lamports: bigint; data: Uint8Array };
