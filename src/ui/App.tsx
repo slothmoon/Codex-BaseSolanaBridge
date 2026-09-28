@@ -25,7 +25,9 @@ export function App() {
         <div class="hero">
           <h1>Return Solana assets from Base</h1>
           <p class="muted">
-            Burn Base-wrapped SPL tokens or SOL and receive the originals on Solana. Everything runs in your browser against public RPCs — no backend, no custody.
+            Burn Base-wrapped SPL tokens or SOL and receive the originals on Solana.
+            <br />
+            Everything runs in your browser against public RPCs — no backend, no custody.
           </p>
         </div>
 

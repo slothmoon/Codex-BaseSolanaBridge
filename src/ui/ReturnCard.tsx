@@ -34,7 +34,7 @@ export function ReturnCard() {
     <section class="card" aria-labelledby="return-title">
       <header class="card-header">
         <span class="step-badge">1</span>
-        <h2 id="return-title">Return to Solana</h2>
+        <h2 id="return-title">Burn on Base</h2>
       </header>
 
       <div class="field">
@@ -155,7 +155,7 @@ export function ReturnCard() {
       {burnState.value.status === "error" && <ErrorNotice message={burnState.value.message} detail={burnState.value.detail} />}
       {burnState.value.status === "ready" && (
         <Notice tone="success" title="Burn submitted">
-          <Mono value={burnState.value.value} href={baseExplorerTx(burnState.value.value)} /> Tracking it under Track &amp; claim.
+          <Mono value={burnState.value.value} href={baseExplorerTx(burnState.value.value)} /> Tracking it in step 2.
         </Notice>
       )}
     </section>

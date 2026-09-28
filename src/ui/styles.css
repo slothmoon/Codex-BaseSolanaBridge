@@ -84,7 +84,7 @@ button, input { font: inherit; color: inherit; }
 /* Hero */
 .hero { margin: 20px 0 22px; max-width: 720px; }
 .hero h1 { font-size: clamp(26px, 4.5vw, 36px); letter-spacing: -0.02em; font-weight: 700; }
-.hero p { margin: 8px 0 0; font-size: 16px; }
+.hero p { margin: 8px 0 0; font-size: 16px; text-wrap: pretty; }
 
 /* Layout */
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
