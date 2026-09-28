@@ -13,7 +13,7 @@ vi.mock("../../src/core/status", async (original) => ({
 }));
 let finishPrepare: (value: unknown) => void = () => undefined;
 let finishClaim: (value: unknown) => void = () => undefined;
-let failClaim: (signature: string, error: Error) => void = () => undefined; // sends one transaction, then errors
+let failClaim: (signature: string | null, error: Error) => void = () => undefined; // sends one transaction (unless null), then errors
 vi.mock("../../src/core/claim", async (original) => ({
   ...(await original<typeof import("../../src/core/claim")>()),
   prepareClaim: vi.fn(({ status }: { status: unknown }) => new Promise((resolve) => (finishPrepare = () => resolve({ status, plan: { txs: [] } })))),
@@ -22,7 +22,7 @@ vi.mock("../../src/core/claim", async (original) => ({
       new Promise((resolve, reject) => {
         finishClaim = resolve;
         failClaim = (signature, error) => {
-          onProgress({ index: 0, total: 1, label: "Prove and release", phase: "sending", signature });
+          if (signature) onProgress({ index: 0, total: 1, label: "Prove and release", phase: "sending", signature });
           reject(error);
         };
       })
@@ -122,6 +122,19 @@ describe("claim review and claim while the user moves around", () => {
     await claim;
     lookupState = "ready";
     expect(state.claimRun.value).toEqual({ status: "ready", value: { signatures: ["sigA"] } });
+  });
+
+  it("shows no claim result when someone else claimed first and nothing was sent", async () => {
+    await state.track(A);
+    const review = state.reviewClaim();
+    finishPrepare(undefined);
+    await review;
+    const claim = state.runClaim();
+    lookupState = "claimed";
+    failClaim(null, new Error("This message has already been claimed."));
+    await claim;
+    lookupState = "ready";
+    expect(state.claimRun.value.status).toBe("error"); // hidden once the transfer shows Claimed; no empty "Claim complete"
   });
 
   it("still shows the error when the claim did not land", async () => {

@@ -352,7 +352,7 @@ export async function runClaim(): Promise<void> {
   // The RPC can report a failed send for a claim that still landed (seen on mainnet); the chain decides.
   const claimed = tracked.value.status === "ready" && tracked.value.value.state === "claimed";
   const sent = claimProgress.value.flatMap((step) => (step.signature ? [step.signature] : []));
-  claimRun.value = result.status === "error" && claimed ? { status: "ready", value: { signatures: sent } } : result;
+  claimRun.value = result.status === "error" && claimed && sent.length > 0 ? { status: "ready", value: { signatures: sent } } : result;
 }
 
 // ---------------------------------------------------------------------------------------------

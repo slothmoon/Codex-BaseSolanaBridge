@@ -14,7 +14,11 @@ export type SolanaRpc = ReturnType<typeof createSolanaRpcFromTransport>;
 let rpcSingleton: SolanaRpc | null = null;
 
 export function getSolanaRpc(): SolanaRpc {
-  rpcSingleton ??= createSolanaRpcFromTransport(createDefaultRpcTransport({ url: NETWORK.solana.rpcUrl }));
+  if (!rpcSingleton) {
+    const transport = createDefaultRpcTransport({ url: NETWORK.solana.rpcUrl });
+    // A request the RPC never answers fails after 30 s instead of leaving a step spinning forever.
+    rpcSingleton = createSolanaRpcFromTransport(((config) => transport({ ...config, signal: config.signal ?? AbortSignal.timeout(30_000) })) as typeof transport);
+  }
   return rpcSingleton;
 }
 
