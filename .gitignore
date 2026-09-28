@@ -1,6 +1,4 @@
 node_modules/
 dist/
-.npm-cache/
-.tmp-base-bridge/
 .env
 .DS_Store
