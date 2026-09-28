@@ -75,7 +75,7 @@ If Base announces a bridge upgrade, follow their instructions and run `npm run t
 
 ## Deploy (Vercel)
 
-Import the repository, use the **Vite** preset, build command `npm run build`, output `dist`. `vercel.json` sets a strict CSP (no inline scripts or styles, `connect-src` https only) and immutable caching for hashed assets. No server functions or secrets are needed.
+Import the repository, use the **Vite** preset, build command `npm run build`, output `dist`. `vercel.json` sets a strict CSP (no inline scripts or styles, `connect-src` https only). Caching is left to Vercel's defaults, so a file that is briefly missing right after a deploy is never cached. No server functions or secrets are needed.
 
 ## Scope and limits
 
