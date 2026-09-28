@@ -83,3 +83,7 @@ Import the repository, use the **Vite** preset, build command `npm run build`, o
 - Transfers that carry extra Solana instructions, or cross-chain calls, are tracked but not claimed here.
 - The claim fee payer needs a little SOL for fees and rent: the proof account, plus the token account if it doesn't exist.
 - Not affiliated with Base or Coinbase. Use at your own risk.
+
+## License
+
+[MIT](LICENSE)

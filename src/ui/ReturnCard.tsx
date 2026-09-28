@@ -34,16 +34,14 @@ export function ReturnCard() {
     <section class="card" aria-labelledby="return-title">
       <header class="card-header">
         <span class="step-badge">1</span>
-        <div>
-          <h2 id="return-title">Return to Solana</h2>
-          <p class="muted">Burn a Base-wrapped Solana asset and receive the original on Solana.</p>
-        </div>
+        <h2 id="return-title">Return to Solana</h2>
       </header>
 
-      <label class="field">
-        <span class="field-label">Wrapped token on Base</span>
+      <div class="field">
+        <label class="field-label" for="token-address">Wrapped token on Base</label>
         <div class="input-row">
           <input
+            id="token-address"
             value={tokenInput.value}
             onInput={(event) => (tokenInput.value = event.currentTarget.value)}
             placeholder="0x… token address"
@@ -57,7 +55,7 @@ export function ReturnCard() {
           </button>
         </div>
         <span id="token-help" class="field-help">Paste the Base address of the wrapped SPL token, or choose SOL.</span>
-      </label>
+      </div>
 
       {inspected.status === "loading" && <Spinner label="Checking the token on Base and Solana…" />}
       {inspected.status === "error" && <ErrorNotice message={inspected.message} detail={inspected.detail} />}
@@ -78,10 +76,11 @@ export function ReturnCard() {
         </div>
       )}
 
-      <label class="field">
-        <span class="field-label">Amount</span>
+      <div class="field">
+        <label class="field-label" for="amount">Amount</label>
         <div class="input-row">
           <input
+            id="amount"
             value={amountInput.value}
             onInput={(event) => (amountInput.value = event.currentTarget.value)}
             placeholder="0.0"
@@ -95,7 +94,7 @@ export function ReturnCard() {
             </button>
           ) : null}
         </div>
-      </label>
+      </div>
 
       {missing.length > 0 && info && <Notice tone="info">Connect your {missing.join(" and ")} to continue.</Notice>}
       {evmAccount.value && !evmOnBase.value && <Notice tone="warn">Switch your Base wallet to {NETWORK.base.chain.name}.</Notice>}

@@ -94,6 +94,7 @@ button, input { font: inherit; color: inherit; }
 @media (max-width: 480px) { .card { padding: 16px; } }
 .card-header { display: flex; gap: 12px; align-items: flex-start; }
 .card-header h2 { font-size: 19px; }
+.card-header > h2 { line-height: 28px; } /* a title with no subtitle lines up with its step badge */
 .card-header p { margin: 2px 0 0; font-size: 14px; }
 .step-badge { flex: none; width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
 

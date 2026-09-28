@@ -40,7 +40,8 @@ export function App() {
           <strong>Use at your own risk.</strong> This open-source, self-custodial software is provided as is. Transactions are irreversible; verify every detail before signing.
         </p>
         <p class="muted">
-          Built on the official <a href="https://docs.base.org/base-chain/quickstart/base-solana-bridge" target="_blank" rel="noreferrer noopener">Base–Solana bridge</a>. Not affiliated with Base or Coinbase.
+          Built on the official <a href="https://docs.base.org/base-chain/quickstart/base-solana-bridge" target="_blank" rel="noreferrer noopener">Base–Solana bridge</a>.{" "}
+          <a href="https://github.com/slothmoon/Codex-BaseSolanaBridge" target="_blank" rel="noreferrer noopener">Source code</a> (MIT). Not affiliated with Base or Coinbase.
         </p>
       </footer>
     </div>

@@ -91,7 +91,8 @@ describe("app shell", () => {
     const state = await import("../../src/state/app");
     render(<App />);
     expect(screen.getByRole("heading", { name: /Return Solana assets from Base/ })).toBeTruthy();
-    const input = screen.getByPlaceholderText("0x… token address");
+    const input = screen.getByLabelText("Wrapped token on Base"); // the label names only the field
+    expect(screen.getByLabelText("Amount")).toBeTruthy();
     fireEvent.input(input, { target: { value: "0x1234" } });
     await state.runInspection();
     expect(await screen.findByText(/valid Base token address/)).toBeTruthy();

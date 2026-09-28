@@ -2,6 +2,7 @@
   "name": "base-solana-return",
   "version": "2.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Static, non-custodial interface for returning Base-wrapped Solana assets (SPL tokens and SOL) to Solana.",
   "scripts": {
